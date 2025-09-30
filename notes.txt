@@ -1,0 +1,2 @@
+I could theoretically work w 6 bits integer, and use the remaining two to store smtg like 
+card color ? or point value ? I will not do that though.

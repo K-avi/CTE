@@ -1,0 +1,25 @@
+Steps : 
+
+Game : 
+
+- shuffle deck, 
+- keep track of player hand / won cards
+        I think the table and draw will be global variables, whereas the player hand / won cards  
+        will be allocated at runtime to accomodate for 4 players variant. 
+        I don't think it would be unreasonable to have space for the 4 players statically allocated 
+        but I probably won't do it bc I'll implement 4 players later
+- detect legal moves (?)
+- play legal moves (?)
+- cli interface 
+- gui? 
+
+IA : 
+
+- Move Generation 
+- basic choice function 
+    - play the hand that gives you the most point
+    - if you can't, drop a card that creates the least sums possible
+
+- advanced choice function : 
+    - count cards maybe 
+    - maybe calculate moves idk
