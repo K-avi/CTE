@@ -8,10 +8,14 @@ Game :
         will be allocated at runtime to accomodate for 4 players variant. 
         I don't think it would be unreasonable to have space for the 4 players statically allocated 
         but I probably won't do it bc I'll implement 4 players later
+
+        I think each player should have a move struct or smtg
 - detect legal moves (?)
 - play legal moves (?)
 - cli interface 
 - gui? 
+
+- write tests at some point
 
 IA : 
 

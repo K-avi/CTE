@@ -42,14 +42,15 @@ struct s_cte_hand{
 
 struct s_cte_won_cards{
     uint8_t size; 
-    uint8_t array_52;
+    uint8_t array[52];
 };
 
 struct s_cte_player_data{
     uint8_t player_id;
+    uint8_t nb_tablic;
     char *player_name;
     struct s_cte_hand hand;
-    struct s_cte_won_cards; 
+    struct s_cte_won_cards won_cards; 
 };
 
 struct s_cte_players{
@@ -67,14 +68,34 @@ enum e_colors{ clubs = 0,diamonds, hearts, spade };
 //actual game functions ig?
 
 //get the points of a card from a value and it's color
-#define get_points(value,color) ({int v = (value), c = (color) ; points[(v-2) * c] }) 
+#define get_value(card) (values[(card)%13])
+#define get_color(card) ((card)/13)
 
-#define get_color(index) ({uint8_t v = (index); index/4;})
-#define get_value(card) ({uint8_t c = (card); c/4 ;})
+#define get_points_var(value, color) (points[(color)*13 + (value-2)])
+#define get_points(card) (points[card])
+
+t_cteerr init_players(struct s_cte_players *players, uint8_t nb_players, char **player_names);
+void free_players(struct s_cte_players *players);
 
 t_cteerr setup_game(struct s_cte_players *);
 /*t_cteerr play_move();
 t_cteerr print_hand(); 
 t_cteerr print_table();*/
+
+extern struct deck{
+    uint8_t cur_card; 
+    t_card cards[52];
+}deck;
+extern struct table {
+    uint8_t nb_cards_on_table;
+    t_card cards_on_table[52]; 
+}table;
+
+#define DEBUG 1
+#ifdef DEBUG
+extern void print_hand(struct s_cte_hand *hand);
+extern void print_table(void);
+
+#endif 
 
 #endif

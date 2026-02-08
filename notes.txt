@@ -1,2 +1,13 @@
 I could theoretically work w 6 bits integer, and use the remaining two to store smtg like 
 card color ? or point value ? I will not do that though.
+
+I'm thinking about the AI , I'm not sure how to tackle it. 
+I'll do a basic thing first and then and only then will think abt how to 
+do smtg smart. Thing is I feel like the evaluation function should use a lot 
+of probabilities and I'm bad at it. 
+
+Also I don't think it should "calculate" (like a chess engine would). But I'm not sure. Even if 
+it does it would be on a very small depth bc otherwise it would get out of hand
+
+I feel like the best move to play is relatively simple to guess if u have cards on the table, 
+if u don't though idk
