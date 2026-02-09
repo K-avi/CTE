@@ -86,10 +86,102 @@ int main(){
         assert(get_points(i) == expected_points);
     }
     
-    print_hand(&players.players[0].hand);
-    print_hand(&players.players[1].hand);
-    print_table();
+    //print_hand(&players.players[0].hand);
+    //print_hand(&players.players[1].hand);
+    //print_table();
 
+    struct s_cte_move move_aces; 
+    move_aces.card_played = 12; //king of clubs
+    move_aces.cards_picked.size = 2;
+    move_aces.cards_picked.max = 2;
+    move_aces.cards_picked.array = malloc(sizeof(uint8_t) * 2);
+
+    move_aces.cards_picked.array[0] = 11; //queen of clubs
+    move_aces.cards_picked.array[1] = 9; //ace of clubs
+
+    bool legal;
+
+    err = is_legal(&legal, &move_aces);
+    assert(err == e_ok);
+    assert(legal);
+
+    free(move_aces.cards_picked.array);
+    
+    struct s_cte_move move_single;
+    move_single.card_played = 8; //10 of clubs
+    move_single.cards_picked.size = 1;
+    move_single.cards_picked.max = 1;
+    move_single.cards_picked.array = malloc(sizeof(uint8_t) * 1);
+    move_single.cards_picked.array[0] = 21; //10 of diamonds
+
+    err = is_legal(&legal, &move_single);
+    assert(err == e_ok);
+    assert(legal);
+
+    free(move_single.cards_picked.array);
+
+
+    struct s_cte_move move_multi;
+
+    move_multi.card_played = 12; //king of clubs
+    move_multi.cards_picked.size = 4;
+    move_multi.cards_picked.max = 4;
+    move_multi.cards_picked.array = malloc(sizeof(uint8_t) * 4);
+    move_multi.cards_picked.array[0] = 11; //queen of clubs
+    move_multi.cards_picked.array[1] = 22; //ace of diamonds
+    move_multi.cards_picked.array[2] = 13; //2 of diamonds
+    move_multi.cards_picked.array[3] = 23; //jack of diamonds
+
+    err = is_legal(&legal, &move_multi);
+    assert(err == e_ok);
+    assert(legal);
+
+    free(move_multi.cards_picked.array);
+
+    struct s_cte_move move_illegal;
+    move_illegal.card_played = 8; //10 of clubs
+    move_illegal.cards_picked.size = 2;
+    move_illegal.cards_picked.max = 2;
+    move_illegal.cards_picked.array = malloc(sizeof(uint8_t) * 2);
+    move_illegal.cards_picked.array[0] = 21; //10 of diamonds
+    move_illegal.cards_picked.array[1] = 22; //jack of diamonds
+
+    err = is_legal(&legal, &move_illegal);
+    assert(err == e_ok);
+    assert(!legal);
+
+    free(move_illegal.cards_picked.array);
     free_players(&players);
+
+    //test generate_combinations function
+    uint8_t playable_cards[] = {1, 2, 3, 4, 5};
+    uint8_t nb_playable_cards = 5;
+    uint8_t combination_size = 3;
+    uint8_t **combinations; 
+    combinations = malloc(sizeof(uint8_t*) * 10);
+    for(int i = 0; i < 10; i++){
+        combinations[i] = malloc(sizeof(uint8_t) * combination_size);
+    }
+    uint8_t combination_sizes[10];
+    for(uint8_t i = 0 ; i < 10; i++){
+        combination_sizes[i] = 3;
+    }
+
+    generate_combinations((uint8_t**)combinations, playable_cards, nb_playable_cards, combination_size, 10);
+    
+    //print combinations sizes
+    printf("Combinations of size %d : \n", combination_size);
+    for(uint8_t i = 0 ; i < 10; i++){
+        printf("Combination %d : size %d \n", i, combination_sizes[i]);
+        for(uint8_t j = 0 ; j < combination_sizes[i]; j++){
+            printf("%d ", combinations[i][j]);
+        }
+        printf("\n");
+    }
+
+    for(int i = 0; i < 10; i++){
+        free(combinations[i]);
+    }
+    free(combinations);
     return 0;
 }

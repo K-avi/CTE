@@ -60,7 +60,7 @@ struct s_cte_players{
 
 //-------- Global variables 
 
-extern uint8_t points[52];//point of each card 
+extern uint8_t __tab_points[52];//point of each card 
 extern uint8_t values[13];//value of each card
 
 enum e_colors{ clubs = 0,diamonds, hearts, spade };
@@ -71,8 +71,8 @@ enum e_colors{ clubs = 0,diamonds, hearts, spade };
 #define get_value(card) (values[(card)%13])
 #define get_color(card) ((card)/13)
 
-#define get_points_var(value, color) (points[(color)*13 + (value-2)])
-#define get_points(card) (points[card])
+#define get_points_var(value, color) (__tab_points[(color)*13 + (value-2)])
+#define get_points(card) (__tab_points[card])
 
 t_cteerr init_players(struct s_cte_players *players, uint8_t nb_players, char **player_names);
 void free_players(struct s_cte_players *players);
@@ -95,6 +95,11 @@ extern struct table {
 #ifdef DEBUG
 extern void print_hand(struct s_cte_hand *hand);
 extern void print_table(void);
+t_cteerr is_legal(bool *ret, struct s_cte_move *move);
+void generate_combinations(uint8_t **combinations,
+                           uint8_t playable_cards[], uint8_t nb_playable_cards, 
+                           uint8_t combination_size, uint8_t max_value);
+
 
 #endif 
 

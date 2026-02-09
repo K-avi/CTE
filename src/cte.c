@@ -17,7 +17,7 @@ uint8_t values[13] = {
 };
 
 //Array of the value (in points) of each card in the game
-uint8_t points[52] = {
+uint8_t __tab_points[52] = {
    0, 0, 0,0, 0, 0, 0, 0, 1, 1, 1, 1, 1, //clubs
    1, 0, 0,0, 0, 0, 0, 0, 1, 2, 1, 1, 1,//diamonds
    0, 0, 0,0, 0, 0, 0, 0, 1, 1, 1, 1, 1, //hearts
@@ -96,38 +96,6 @@ static void shuffle_deck(void){
     }
 }//tested; ok
 
-//currently we will support 
-//a simplified version of the game. 
-//You can not pick up multiple cards that do unrelated 
-//sums.
-static t_cteerr is_legal(bool *ret, struct s_cte_move *move){
-
-    *ret = false; 
-    uint8_t value = get_value(move->card_played);
-    uint32_t sum = 0; 
-    uint8_t nb_aces; //used to substract
-
-    struct s_cte_darr *cards_picked = &move->cards_picked;
-
-    for(uint8_t i = 0 ; i < cards_picked->size; i++){
-        uint8_t card_val = get_value(cards_picked->array[i]);
-        if( card_val == 11) nb_aces++;
-        sum += card_val;
-    }
-    if(nb_aces == 0) *ret = sum == value;
-
-    //handle aces
-    for(uint8_t i = 0 ; i < nb_aces; i++){
-        sum -= 10; 
-        if((*ret=sum==value)) break; //if true break   
-    }//*ret will be set to false if nothing is found
-
-    //ig the multiple hands think could be done by 
-    //checking if the sum of the card picked can be equal 
-    //to the value of the cards times something.
-    return e_ok;
-}//not tested
-
 t_cteerr setup_game(struct s_cte_players *players){
     
     shuffle_deck();
@@ -193,8 +161,148 @@ t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player){
     return e_ok;
 }//not tested
 
+
+#ifndef DEBUG
+static t_cteerr is_legal(bool *ret, struct s_cte_move *move){
+#else
+t_cteerr is_legal(bool *ret, struct s_cte_move *move){
+#endif
+    /*
+    Let's figure out the max number of cars that can be picked up in tablic
+    Let's say I have a king in hand. 
+    Let's say the table is filled w every other card. 
+
+    I can pick up the three remaining kings. 
+    Every queen + ace or Ace + 3
+    every jack + 2
+
+    every 10 + 4
+    every 9 + 5 
+
+    every 8 + 6
+    the four sevens
+
+    Which leaves the threes or queens on the table.
+
+    for a total of 3 + 5*8 + 4 = 47 cards that can be picked up with a king.
+    the sum of the values of the cards would be : 
+    14*25 (wowie)
+    ps: I don't think that's useful but hey I'll leave a note 4 the future
+    */
+    *ret = false; 
+    uint8_t value = get_value(move->card_played);
+    uint32_t sum = 0; 
+    uint8_t nb_aces = 0; //used to substract
+
+    struct s_cte_darr *cards_picked = &move->cards_picked;
+
+    //sum the values of the cards picked up, and count the number of aces
+    for(uint8_t i = 0 ; i < cards_picked->size; i++){
+        uint8_t card_val = get_value(cards_picked->array[i]);
+        if( card_val == 11) nb_aces++;
+        sum += card_val;
+    }
+    if(nb_aces == 0) *ret = sum % value == 0;
+    
+    else{
+        for(uint8_t i = 0 ; i <= nb_aces; i++){
+            if((sum - i*10) % value == 0){
+                *ret = true;
+                break;
+            }
+        }
+    }
+    return e_ok;
+}//tested; seems ok, more thorough testing needed
+
+
+//to do this we want to avoid 
+//playing the same move multiple times. 
+
+//so we will build the lists of legal 
+//move with increasing value of the card played.
+//we will also begin by generating the moves with the most cards picked up
+//and if we can split them, we will create smaller moves out of them.
+
 /*
-//nothing done here
+Hold up I think theres an nlogn solution to this.
+first u sort 
+actually maybe not.
+bc I don't think theres a O(n) to check sums
+
+I think I still need to sort the cards by value ....
+
+No this is actually a knapsack ffs
+*/
+
+static bool is_in_move(struct s_cte_move *move, uint8_t card){
+    for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
+        if(move->cards_picked.array[i] == card) return true;
+    }
+    return false;
+}//not tested
+
+#define is_ace(card) (get_value(card) == 11)
+
+static bool intersects(struct s_cte_move *move, struct s_cte_move *other){
+    for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
+        if(is_in_move(other, move->cards_picked.array[i])) return true;
+    }
+    
+    return false;
+}//not tested
+
+#ifndef DEBUG
+static void generate_combinations(uint8_t **combinations, 
+#else 
+void generate_combinations(uint8_t **combinations,
+#endif
+
+    uint8_t playable_cards[], uint8_t nb_playable_cards, uint8_t combination_size, 
+    uint8_t max_value){
+    /*
+    @param combinations      : 2d array where the combinations will be stored
+    @param playable_cards    : array of the cards that can be picked up (we assume value < value of card played) 
+           (n in C(n, k))
+    @param nb_playable_cards : number of playable cards (size of the playable_cards array 
+                               dim2 of the combinations array)
+    @param combination_size  : size of the combinations to generate 
+                               (k in C(n, k))
+    */
+    if(combination_size == 1){
+        for(uint8_t i = 0 ; i < nb_playable_cards; i++){
+            combinations[i][0] = playable_cards[i];
+        }
+    }else if(combination_size == nb_playable_cards){
+        for(uint8_t i = 0 ; i < nb_playable_cards; i++){
+            combinations[0][i] = playable_cards[i];
+        }
+    }else{
+        uint8_t indices[combination_size];
+        for(uint8_t i = 0 ; i < combination_size; i++){
+            indices[i] = i;
+        }
+        uint8_t comb_idx = 0;
+        while(true){
+            for(uint8_t i = 0 ; i < combination_size; i++){
+                combinations[comb_idx][i] = playable_cards[indices[i]];
+            }
+            comb_idx++;
+            //return;
+            int i = combination_size - 1;
+            while(i >= 0 && indices[i] == nb_playable_cards - combination_size + i){
+                i--;
+            }
+            if(i < 0) break;
+            indices[i]++;
+            for(uint8_t j = i + 1; j < combination_size; j++){
+                indices[j] = indices[j - 1] + 1;
+            }
+        }
+    }
+    
+}//tested; seems ok; more thorough testing needed
+
 static t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
     
     if(!table.nb_cards_on_table){
@@ -204,43 +312,67 @@ static t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
         //generate all legal moves
         
         //store temporary moves to evaluate if they are ok
-        uint8_t candidate_moves[table.nb_cards_on_table][table.nb_cards_on_table];
-        uint8_t tab_size[table.nb_cards_on_table]; //counters for each move size
-        uint8_t nb_moves = 0; //counter for number of candidate moves
+        //total number of moves is the sum of the number of combinations of cards
+        //smh.
+
+        //filter out the cards that are > to the card played
+
+        uint8_t playable_cards[table.nb_cards_on_table];
+        uint8_t nb_playable_cards = 0;
+        uint8_t nb_aces = 0;
+        for(uint8_t i = 0 ; i < table.nb_cards_on_table; i++){
+            if(get_value(table.cards_on_table[i]) < get_value(card) ){
+                playable_cards[nb_playable_cards++] = table.cards_on_table[i];
+            }
+            if(is_ace(table.cards_on_table[i])){
+                nb_aces++;
+                playable_cards[nb_playable_cards++] = table.cards_on_table[i];
+            }
+        }
+        
+        uint8_t tmp_combinations[nb_combinations][nb_playable_cards];
+        //uint8_t combination_sizes[nb_combinations];
+        
+        uint8_t kept_combinations[nb_combinations][nb_playable_cards];
+        uint8_t kept_combination_sizes[nb_combinations];
+        uint8_t nb_kept_combinations = 0;
 
         uint8_t value = get_value(card);
 
-        //initialize moves
-        for(uint8_t i = 0 ; i < table.nb_cards_on_table; i++){
-            if(get_value(table.cards_on_table[i]) < value){
-                candidate_moves[i][0] = table.cards_on_table[i];
-                nb_moves++;
+        //problem here bc values will be overwritten
+        for(uint8_t size = 1 ; size <= nb_playable_cards; size++){
+            //C(n, k) combinations of the playable cards
+            uint16_t nb_combinations = 1;
+            for(uint8_t i = 0 ; i < size; i++){
+                nb_combinations = nb_combinations * (nb_playable_cards - i) / (i + 1);
+            }   
+            generate_combinations((uint8_t**)tmp_combinations, playable_cards, nb_playable_cards, size, value);
+            //filter out the combinations that are not equal to the value of the card played
+            for(uint16_t i = 0 ; i < nb_combinations; i++){
+                
             }
         }
-
-        //initialize move size of non excluded moves
-        for(uint8_t i = 0 ; i < nb_moves; i++){
-            tab_size[i] = 1;
-        }
-
-        
-       /// a problem I might encounter is that some moves might be repeated. If I pick up 
-        //a queen, and ace with a king, i could also pick up the ace and queen. 
-
-       // I also have to consider that I can play multiple "moves" if cards are unrelated.
     }
     return e_ok;
-}*/
+}
 /*
 static t_cteerr generate_all_moves(struct s_cte_move ** moves, struct s_cte_hand* hand){
     //generates all legal moves with a given hand and table
 
     return 0;
+}
+
+
+static uint8_t simple_evaluate(struct s_cte_move *move){
+    //evaluate a move by counting the points of the cards picked up
+    uint8_t points = 0; 
+    for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
+        points += get_points(move->cards_picked.array[i]);
+    }
+    return points;
 }*/
 
-/*
-t_cteerr simple_evaluate();
-*/
+
 //all of those should be really straight forward tbh
 
 
