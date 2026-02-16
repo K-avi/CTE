@@ -170,18 +170,34 @@ int main(){
     generate_combinations((uint8_t**)combinations, playable_cards, nb_playable_cards, combination_size, 10);
     
     //print combinations sizes
-    printf("Combinations of size %d : \n", combination_size);
+    /*printf("Combinations of size %d : \n", combination_size);
     for(uint8_t i = 0 ; i < 10; i++){
         printf("Combination %d : size %d \n", i, combination_sizes[i]);
         for(uint8_t j = 0 ; j < combination_sizes[i]; j++){
             printf("%d ", combinations[i][j]);
         }
         printf("\n");
-    }
+    }*/
 
     for(int i = 0; i < 10; i++){
         free(combinations[i]);
     }
     free(combinations);
+
+    struct s_cte_move * moves;
+    moves = malloc(sizeof(struct s_cte_move));
+    moves->card_played = 12; //king of clubs
+    moves->cards_picked.size = 0;
+    moves->cards_picked.max = 2;
+    moves->cards_picked.array = malloc(sizeof(uint8_t) * 2);
+
+    table.nb_cards_on_table = 4;
+
+    gen_card_moves(&moves, 12); //10 of clubs
+    
+
+    free(moves->cards_picked.array);
+    free(moves);
+
     return 0;
 }

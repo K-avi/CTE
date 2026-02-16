@@ -91,16 +91,19 @@ extern struct table {
     t_card cards_on_table[52]; 
 }table;
 
-#define DEBUG 1
-#ifdef DEBUG
+
 extern void print_hand(struct s_cte_hand *hand);
 extern void print_table(void);
+
+#define DEBUG
+#ifdef DEBUG
+
 t_cteerr is_legal(bool *ret, struct s_cte_move *move);
 void generate_combinations(uint8_t **combinations,
                            uint8_t playable_cards[], uint8_t nb_playable_cards, 
                            uint8_t combination_size, uint8_t max_value);
 
-
+t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card);
 #endif 
 
 #endif

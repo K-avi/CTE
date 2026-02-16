@@ -5,6 +5,12 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef DEBUG
+void print_table(void);
+void print_hand(struct s_cte_hand *hand);
+void print_move(struct s_cte_move *move);
+#endif
+
 /* order : 
 * 2, 3, 4, 5, 6, 7, 8, 9, 10, ACE, JACK, QUEEN, KING
 * Clubs, Diamonds, Hearts, Spade
@@ -303,7 +309,49 @@ void generate_combinations(uint8_t **combinations,
     
 }//tested; seems ok; more thorough testing needed
 
+static void filter_combinations(uint8_t **combinations_src, uint8_t combination_sizes_src, uint8_t nb_combinations_src,
+                                uint8_t **combinations_dst, uint8_t *combination_sizes_dst, uint8_t *dst_idx_start,
+                                uint8_t nb_combinations_dst, uint8_t value){
+    //filter out the combinations that are not legal (sum of values of cards != value of card played)
+    //we assume that the combinations are sorted by size (descending)
+    uint8_t dst_idx = *dst_idx_start;
+    for(uint8_t i = 0 ; i < nb_combinations_src; i++){
+        if(dst_idx >= nb_combinations_dst) break;
+        
+        //calculate sum of values in combination + count aces
+        uint32_t sum = 0; 
+        uint8_t nb_aces = 0;
+        for(uint8_t j = 0 ; j < combination_sizes_src; j++){
+            sum += get_value(combinations_src[i][j]);
+            if(is_ace(combinations_src[i][j])) nb_aces++;
+
+        }
+
+        if(nb_aces == 0){
+            if(sum == value){
+                memcpy(combinations_dst[dst_idx], combinations_src[i], sizeof(uint8_t) * combination_sizes_src);
+                combination_sizes_dst[dst_idx] = combination_sizes_src;
+                dst_idx++;
+            }
+        }else{
+            for(uint8_t k = 0 ; k <= nb_aces; k++){
+                if(sum - k*10 == value){
+                    memcpy(combinations_dst[dst_idx], combinations_src[i], sizeof(uint8_t) * combination_sizes_src);
+                    combination_sizes_dst[dst_idx] = combination_sizes_src;
+                    dst_idx++;
+                    break;
+                }
+            }
+        }
+    }
+    *dst_idx_start = dst_idx;
+}//not tested
+
+#ifndef DEBUG
 static t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
+#else
+t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
+#endif
     
     if(!table.nb_cards_on_table){
         (*moves)->card_played = 53 ;
@@ -321,40 +369,71 @@ static t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
         uint8_t nb_playable_cards = 0;
         uint8_t nb_aces = 0;
         for(uint8_t i = 0 ; i < table.nb_cards_on_table; i++){
-            if(get_value(table.cards_on_table[i]) < get_value(card) ){
-                playable_cards[nb_playable_cards++] = table.cards_on_table[i];
-            }
             if(is_ace(table.cards_on_table[i])){
                 nb_aces++;
+                playable_cards[nb_playable_cards++] = table.cards_on_table[i];
+            }else if(get_value(table.cards_on_table[i]) < get_value(card) ){
                 playable_cards[nb_playable_cards++] = table.cards_on_table[i];
             }
         }
         
-        uint8_t tmp_combinations[nb_combinations][nb_playable_cards];
-        //uint8_t combination_sizes[nb_combinations];
-        
-        uint8_t kept_combinations[nb_combinations][nb_playable_cards];
-        uint8_t kept_combination_sizes[nb_combinations];
+        uint8_t max_comb_size = 1 << nb_playable_cards;
+        uint8_t **tmp_combinations = malloc(sizeof(uint8_t*) * max_comb_size);
+        uint8_t **kept_combinations = malloc(sizeof(uint8_t*) * max_comb_size);
+
+        for(uint8_t i = 0 ; i < max_comb_size; i++){
+            #ifdef DEBUG
+            tmp_combinations[i] = calloc(max_comb_size, sizeof(uint8_t));
+            kept_combinations[i] = calloc(max_comb_size, sizeof(uint8_t));
+            #else
+            tmp_combinations[i] = malloc(sizeof(uint8_t) * nb_playable_cards);
+            kept_combinations[i] = malloc(sizeof(uint8_t) * nb_playable_cards);
+
+            #endif
+        }           
+
+        uint8_t *kept_combination_sizes = malloc(sizeof(uint8_t) * max_comb_size);
         uint8_t nb_kept_combinations = 0;
 
         uint8_t value = get_value(card);
 
-        //problem here bc values will be overwritten
         for(uint8_t size = 1 ; size <= nb_playable_cards; size++){
             //C(n, k) combinations of the playable cards
             uint16_t nb_combinations = 1;
             for(uint8_t i = 0 ; i < size; i++){
                 nb_combinations = nb_combinations * (nb_playable_cards - i) / (i + 1);
             }   
-            generate_combinations((uint8_t**)tmp_combinations, playable_cards, nb_playable_cards, size, value);
-            //filter out the combinations that are not equal to the value of the card played
-            for(uint16_t i = 0 ; i < nb_combinations; i++){
-                
-            }
+
+            //generate combinations of size "size" of the playable cards
+            generate_combinations(tmp_combinations, playable_cards, nb_playable_cards, size, value);
+            //filter out the combinations that are not legal and store the legal ones in kept_combinations
+            filter_combinations(tmp_combinations, size, nb_combinations, 
+                                kept_combinations, kept_combination_sizes, 
+                                &nb_kept_combinations, nb_combinations, value);
         }
+        //free tmp combinations / kept combinations
+        for(uint8_t i = 0 ; i < max_comb_size; i++){
+            free(tmp_combinations[i]);
+            free(kept_combinations[i]);
+
+        }
+        free(tmp_combinations);
+        free(kept_combinations);
+        free(kept_combination_sizes);
+
+        print_table();
+        print_move(*moves);
+        //print cards played
+        
+
+        /*todo : 
+        
+        "fuse" unrelated combinations to generate more moves.
+        write back into the moves array.
+        */
     }
     return e_ok;
-}
+}//not tested
 /*
 static t_cteerr generate_all_moves(struct s_cte_move ** moves, struct s_cte_hand* hand){
     //generates all legal moves with a given hand and table
@@ -398,6 +477,19 @@ void print_table(){
     printf("Cards on table : \n");
     for(uint8_t i = 0 ; i < table.nb_cards_on_table; i++){
         uint8_t card = table.cards_on_table[i];
+        uint8_t value = get_value(card);
+        uint8_t color = get_color(card);
+
+        printf("%s of %s\n", value_str[value-2], color_str[color]);
+    }
+    printf("\n");
+}//tested; ok
+
+void print_move(struct s_cte_move *move){
+    printf("Card played : %s of %s\n", value_str[get_value(move->card_played)-2], color_str[get_color(move->card_played)]);
+    printf("Cards picked up : \n");
+    for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
+        uint8_t card = move->cards_picked.array[i];
         uint8_t value = get_value(card);
         uint8_t color = get_color(card);
 
