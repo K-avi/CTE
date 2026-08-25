@@ -9,6 +9,7 @@
 void print_table(void);
 void print_hand(struct s_cte_hand *hand);
 void print_move(struct s_cte_move *move);
+void print_card(uint8_t card);
 #endif
 
 /* order : 
@@ -41,7 +42,7 @@ struct deck{
     26,27,28,29,30,31,32,33,34,35,36,37,38, //hearts
     39,40,41,42,43,44,45,46,47,48,49,50,51 //spades
     }
-};
+};//nb : values start at 2 and ace is between 10 and jack.
 #define DECKSIZE 52
 
 //theoreticallly, there could be up to 52 cards on the table 
@@ -222,25 +223,7 @@ t_cteerr is_legal(bool *ret, struct s_cte_move *move){
 }//tested; seems ok, more thorough testing needed
 
 
-//to do this we want to avoid 
-//playing the same move multiple times. 
-
-//so we will build the lists of legal 
-//move with increasing value of the card played.
-//we will also begin by generating the moves with the most cards picked up
-//and if we can split them, we will create smaller moves out of them.
-
-/*
-Hold up I think theres an nlogn solution to this.
-first u sort 
-actually maybe not.
-bc I don't think theres a O(n) to check sums
-
-I think I still need to sort the cards by value ....
-
-No this is actually a knapsack ffs
-*/
-
+//utility to check for presence
 static bool is_in_move(struct s_cte_move *move, uint8_t card){
     for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
         if(move->cards_picked.array[i] == card) return true;
@@ -250,6 +233,7 @@ static bool is_in_move(struct s_cte_move *move, uint8_t card){
 
 #define is_ace(card) (get_value(card) == 11)
 
+//returns true if move and other aren't disjointed sets. false otherwise
 static bool intersects(struct s_cte_move *move, struct s_cte_move *other){
     for(uint8_t i = 0 ; i < move->cards_picked.size; i++){
         if(is_in_move(other, move->cards_picked.array[i])) return true;
@@ -345,17 +329,29 @@ static void filter_combinations(uint8_t **combinations_src, uint8_t combination_
         }
     }
     *dst_idx_start = dst_idx;
-}//not tested
+}//not tested; algorithm seems sound.
 
 #ifndef DEBUG
 static t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
 #else
 t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
 #endif
+    /*
+    @param moves : array of moves where the generated moves will be stored. 
+    not null. The value referenced by moves WILL be allocated by this function, and should be freed by the caller.
+    the function will not check for previous content of the moves array, and will overwrite it. 
+    @param card : card for which we want to generate moves.
+
+    @brief : generates all legal moves with a given card and the current table and stores them in the moves array. 
+    Will cause memleak if passed allocated *moves.
+    */
     
     if(!table.nb_cards_on_table){
+        *moves = malloc(sizeof(struct s_cte_move));
         (*moves)->card_played = 53 ;
         (*moves)->cards_picked.size = 0; 
+        (*moves)->cards_picked.max = 0;
+        (*moves)->cards_picked.array = NULL;
     }else{
         //generate all legal moves
         
@@ -396,6 +392,7 @@ t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
         uint8_t nb_kept_combinations = 0;
 
         uint8_t value = get_value(card);
+        //printf("value of card played : %d,\n", value);
 
         for(uint8_t size = 1 ; size <= nb_playable_cards; size++){
             //C(n, k) combinations of the playable cards
@@ -407,11 +404,38 @@ t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
             //generate combinations of size "size" of the playable cards
             generate_combinations(tmp_combinations, playable_cards, nb_playable_cards, size, value);
             //filter out the combinations that are not legal and store the legal ones in kept_combinations
+
             filter_combinations(tmp_combinations, size, nb_combinations, 
                                 kept_combinations, kept_combination_sizes, 
                                 &nb_kept_combinations, nb_combinations, value);
         }
         //free tmp combinations / kept combinations
+
+        //print kept combinations
+        /*printf("Kept combinations : \n");
+        for(uint8_t i = 0 ; i < nb_kept_combinations; i++){
+            printf("Combination %d : size %d \n", i, kept_combination_sizes[i]);
+            for(uint8_t j = 0 ; j < kept_combination_sizes[i]; j++){
+                print_card(kept_combinations[i][j]);
+            }
+            printf("\n");
+        }*/
+
+        //we are missing moves. To generate new moves, we need to check which moves 
+        //are related and generate new moves if they're not.
+        uint8_t *tmp_combinations_sizes = malloc(sizeof(uint8_t) * max_comb_size);
+        uint8_t nb_tmp_combinations = 0;
+        for(unin8_t i = 0 ; i < nb_kept_combinations; i++){
+            for(uint8_t j = i + 1; j < nb_kept_combinations; j++){
+                if(intersects(&kept_combinations[i], &kept_combinations[j])){
+                    memcpy(tmp_combinations[nb_tmp_combinations], kept_combinations[i], sizeof(uint8_t) * kept_combination_sizes[i]);
+                    tmp_combinations_sizes[nb_tmp_combinations] = kept_combination_sizes[i];
+                  
+                    nb_tmp_combinations++;
+
+                }
+            }
+        }
         for(uint8_t i = 0 ; i < max_comb_size; i++){
             free(tmp_combinations[i]);
             free(kept_combinations[i]);
@@ -421,10 +445,8 @@ t_cteerr gen_card_moves(struct s_cte_move  ** moves, t_card card){
         free(kept_combinations);
         free(kept_combination_sizes);
 
-        print_table();
-        print_move(*moves);
-        //print cards played
-        
+        //print_table();
+       // print_move(*moves);        
 
         /*todo : 
         
@@ -461,6 +483,13 @@ static char * value_str[] = {
 static char * color_str[] = {
     "Clubs", "Diamonds", "Hearts", "Spades"
 };
+
+void print_card(uint8_t card){
+    uint8_t value = get_value(card);
+    uint8_t color = get_color(card);
+
+    printf("%s of %s\n", value_str[value-2], color_str[color]);
+}//tested; ok
 
 void print_hand(struct s_cte_hand *hand){
     printf("Cards in hand : \n");

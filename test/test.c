@@ -193,7 +193,11 @@ int main(){
 
     table.nb_cards_on_table = 4;
 
-    gen_card_moves(&moves, 12); //10 of clubs
+   // gen_card_moves(&moves, 12); //10 of clubs
+
+    //play ace of spades
+    moves->card_played = 48; //ace of spades
+    gen_card_moves(&moves, 48);
     
 
     free(moves->cards_picked.array);
