@@ -19,7 +19,7 @@ Steps & Roadmap :
         - Configurable winning threshold (run_match, s_cte_match)
 
 2. Interface :
-   [ ] Interactive CLI (game board display, human input, AI vs human / 2 players)
+   [x] Interactive CLI (game board display, human input, AI vs human / 2 players / AI vs AI, Unicode & ASCII styles)
    [ ] TUI (ncurses)
    [ ] Potential GUI (Raylib, SDL, or Web wrapper)
 

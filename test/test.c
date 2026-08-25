@@ -951,6 +951,47 @@ int main(){
             assert(fuzz_seen[i] == 1);
     }
 
+    // ---- Tests format_card & format_move ----
+    char c_buf[32];
+    format_card(c_buf, sizeof(c_buf), 0, CTE_RENDER_UNICODE);
+    assert(strcmp(c_buf, "2♣") == 0);
+    format_card(c_buf, sizeof(c_buf), 0, CTE_RENDER_ASCII);
+    assert(strcmp(c_buf, "2C") == 0);
+
+    format_card(c_buf, sizeof(c_buf), 21, CTE_RENDER_UNICODE);
+    assert(strcmp(c_buf, "10♦") == 0);
+    format_card(c_buf, sizeof(c_buf), 21, CTE_RENDER_ASCII);
+    assert(strcmp(c_buf, "10D") == 0);
+
+    format_card(c_buf, sizeof(c_buf), 35, CTE_RENDER_UNICODE);
+    assert(strcmp(c_buf, "A♥") == 0);
+    format_card(c_buf, sizeof(c_buf), 35, CTE_RENDER_ASCII);
+    assert(strcmp(c_buf, "AH") == 0);
+
+    format_card(c_buf, sizeof(c_buf), 51, CTE_RENDER_UNICODE);
+    assert(strcmp(c_buf, "K♠") == 0);
+    format_card(c_buf, sizeof(c_buf), 51, CTE_RENDER_ASCII);
+    assert(strcmp(c_buf, "KS") == 0);
+
+    // Test format_move drop
+    struct s_cte_move m_fmt_drop = { .card_played = 21, .cards_picked = { .size = 0, .max = 0, .array = NULL } };
+    char m_buf[128];
+    format_move(m_buf, sizeof(m_buf), &m_fmt_drop, CTE_RENDER_UNICODE);
+    assert(strcmp(m_buf, "Drop 10♦") == 0);
+    format_move(m_buf, sizeof(m_buf), &m_fmt_drop, CTE_RENDER_ASCII);
+    assert(strcmp(m_buf, "Drop 10D") == 0);
+
+    // Test format_move capture
+    struct s_cte_move m_fmt_cap;
+    m_fmt_cap.card_played = 8;
+    m_fmt_cap.cards_picked.size = 2;
+    m_fmt_cap.cards_picked.max = 2;
+    m_fmt_cap.cards_picked.array = (uint8_t[]){ 5, 1 };
+    format_move(m_buf, sizeof(m_buf), &m_fmt_cap, CTE_RENDER_UNICODE);
+    assert(strcmp(m_buf, "Play 10♣ -> Take [ 7♣, 3♣ ]") == 0);
+    format_move(m_buf, sizeof(m_buf), &m_fmt_cap, CTE_RENDER_ASCII);
+    assert(strcmp(m_buf, "Play 10C -> Take [ 7C, 3C ]") == 0);
+
     free_players(&players);
 
     printf("All tests passed\n");

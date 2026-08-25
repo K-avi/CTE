@@ -435,14 +435,16 @@ t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, ui
     match->players       = players;
     match->winning_score = winning_score;
     match->round_nb      = 0;
+    match->max_rounds    = 0;
     for(uint8_t i = 0; i < 4; i++) match->match_scores[i] = 0;
 
     return e_ok;
 }//tested; ok
 
-// Retourne true si au moins un joueur a atteint winning_score.
+// Retourne true si le nombre max de manches est atteint ou si un joueur a atteint winning_score.
 bool match_is_over(const struct s_cte_match *match){
     if(!match) return false;
+    if(match->max_rounds > 0 && match->round_nb >= match->max_rounds) return true;
     for(uint8_t i = 0; i < match->players->size; i++){
         if(match->match_scores[i] >= match->winning_score) return true;
     }
@@ -702,6 +704,63 @@ static const char * const color_str[] = {
     "Clubs", "Diamonds", "Hearts", "Spades"
 };
 
+static const char * const value_short_str[] = {
+    "2", "3", "4", "5", "6", "7", "8", "9", "10", "A", "J", "Q", "K"
+};
+
+static const char * const suit_unicode_str[] = {
+    "♣", "♦", "♥", "♠"
+};
+static const char * const suit_ascii_str[] = {
+    "C", "D", "H", "S"
+};
+
+void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style style){
+    if(!buf || buf_size == 0) return;
+    if(card >= 52){
+        snprintf(buf, buf_size, "??");
+        return;
+    }
+    uint8_t v_idx = (uint8_t)(card % 13);
+    uint8_t c_idx = (uint8_t)(card / 13);
+
+    if(style == CTE_RENDER_UNICODE){
+        snprintf(buf, buf_size, "%s%s", value_short_str[v_idx], suit_unicode_str[c_idx]);
+    } else {
+        snprintf(buf, buf_size, "%s%s", value_short_str[v_idx], suit_ascii_str[c_idx]);
+    }
+}
+
+void format_move(char *buf, size_t buf_size, const struct s_cte_move *move, e_cte_render_style style){
+    if(!buf || buf_size == 0) return;
+    if(!move){
+        snprintf(buf, buf_size, "None");
+        return;
+    }
+    char card_buf[16];
+    format_card(card_buf, sizeof(card_buf), move->card_played, style);
+
+    if(move->cards_picked.size == 0){
+        snprintf(buf, buf_size, "Drop %s", card_buf);
+        return;
+    }
+
+    size_t written = (size_t)snprintf(buf, buf_size, "Play %s -> Take [ ", card_buf);
+    for(uint8_t i = 0; i < move->cards_picked.size; i++){
+        char picked_buf[16];
+        format_card(picked_buf, sizeof(picked_buf), move->cards_picked.array[i], style);
+        if(i > 0 && written < buf_size){
+            written += (size_t)snprintf(buf + written, buf_size - written, ", ");
+        }
+        if(written < buf_size){
+            written += (size_t)snprintf(buf + written, buf_size - written, "%s", picked_buf);
+        }
+    }
+    if(written < buf_size){
+        snprintf(buf + written, buf_size - written, " ]");
+    }
+}
+
 
 void print_card(uint8_t card){
     uint8_t value = get_value(card);
@@ -762,3 +821,100 @@ uint16_t eval_random(const s_cte_game_state *state,
     (void)ctx;
     return (uint16_t)(rand() % moves->size);
 }//tested; ok
+
+uint16_t eval_human_cli(const s_cte_game_state *state,
+                        const struct s_cte_move_list *moves,
+                        void *ctx)
+{
+    if(!moves || moves->size == 0) return 0;
+
+    e_cte_render_style style = CTE_RENDER_UNICODE;
+    if(ctx != NULL){
+        style = *(const e_cte_render_style *)ctx;
+    }
+
+    const struct s_cte_player_data *cur_player = &state->players->players[state->current_player_id];
+
+    printf("\n=======================================================\n");
+    // Summary of captured cards & points this round for all players
+    printf(" [Round Status] (Deck: %u cards left)\n", (unsigned)(52 - deck.cur_card));
+    for(uint8_t p = 0; p < state->players->size; p++){
+        const struct s_cte_player_data *pl = &state->players->players[p];
+        uint8_t pts = 0;
+        for(uint8_t j = 0; j < pl->won_cards.size; j++){
+            pts += get_points(pl->won_cards.array[j]);
+        }
+        printf("   * %-10s : %2u cards captured (%2u card pts, %u tablic)\n",
+               pl->player_name,
+               (unsigned)pl->won_cards.size,
+               (unsigned)pts,
+               (unsigned)pl->nb_tablic);
+    }
+    printf("-------------------------------------------------------\n");
+
+    printf(" [Table (%u cards)] : ", (unsigned)state->table->nb_cards_on_table);
+    if(state->table->nb_cards_on_table == 0){
+        printf("(empty)\n");
+    } else {
+        for(uint8_t i = 0; i < state->table->nb_cards_on_table; i++){
+            char card_str[16];
+            format_card(card_str, sizeof(card_str), state->table->cards_on_table[i], style);
+            printf("%s ", card_str);
+        }
+        printf("\n");
+    }
+
+    printf(" [%s's Hand (%u cards)] : ", cur_player->player_name, (unsigned)cur_player->hand.size);
+    for(uint8_t i = 0; i < cur_player->hand.size; i++){
+        char card_str[16];
+        format_card(card_str, sizeof(card_str), cur_player->hand.array[i], style);
+        printf("%s ", card_str);
+    }
+    printf("\n");
+
+    printf(" Available moves (%u):\n", (unsigned)moves->size);
+    for(uint16_t i = 0; i < moves->size; i++){
+        char move_str[128];
+        format_move(move_str, sizeof(move_str), &moves->moves[i], style);
+        printf("   [%u] %s\n", (unsigned)i, move_str);
+    }
+
+    for(;;){
+        printf(" Select move [0-%u]: ", (unsigned)(moves->size - 1));
+        fflush(stdout);
+
+        char input_buf[64];
+        if(!fgets(input_buf, sizeof(input_buf), stdin)){
+            printf("\n");
+            return 0;
+        }
+
+        char *endptr = NULL;
+        long val = strtol(input_buf, &endptr, 10);
+        if(endptr != input_buf && val >= 0 && val < (long)moves->size){
+            return (uint16_t)val;
+        }
+        printf(" Invalid input. Please enter a valid number between 0 and %u.\n", (unsigned)(moves->size - 1));
+    }
+}
+
+uint16_t eval_ai_cli(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx)
+{
+    if(!moves || moves->size == 0) return 0;
+
+    e_cte_render_style style = CTE_RENDER_UNICODE;
+    if(ctx != NULL){
+        style = *(const e_cte_render_style *)ctx;
+    }
+
+    uint16_t chosen = (uint16_t)(rand() % moves->size);
+    const struct s_cte_player_data *cur_player = &state->players->players[state->current_player_id];
+
+    char move_str[128];
+    format_move(move_str, sizeof(move_str), &moves->moves[chosen], style);
+    printf(" [%s (AI)] played : %s\n", cur_player->player_name, move_str);
+
+    return chosen;
+}

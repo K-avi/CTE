@@ -2,6 +2,8 @@
 #define __CTE_CTE_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 //------type to spit out error codes
 typedef uint8_t t_cteerr;
@@ -138,6 +140,7 @@ struct s_cte_match {
     uint16_t match_scores[4]; // Score cumulatif par joueur
     uint16_t winning_score;   // Configurable (ex: 51, 101, 201)
     uint8_t  round_nb;        // Numéro de la manche en cours (0-indexed)
+    uint8_t  max_rounds;      // Limite optionnelle de manches (0 = illimité)
 };
 
 // Scoring & match management
@@ -151,6 +154,12 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config);
 uint16_t eval_random(const s_cte_game_state *state,
                      const struct s_cte_move_list *moves,
                      void *ctx);
+uint16_t eval_human_cli(const s_cte_game_state *state,
+                        const struct s_cte_move_list *moves,
+                        void *ctx);
+uint16_t eval_ai_cli(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx);
 
 extern struct deck{
     uint8_t cur_card; 
@@ -161,6 +170,15 @@ extern struct table {
     uint8_t nb_cards_on_table;
     t_card cards_on_table[52]; 
 }table;
+
+// Card & move string formatting (Unicode / ASCII)
+typedef enum {
+    CTE_RENDER_UNICODE = 0,
+    CTE_RENDER_ASCII   = 1
+} e_cte_render_style;
+
+void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style style);
+void format_move(char *buf, size_t buf_size, const struct s_cte_move *move, e_cte_render_style style);
 
 void print_hand(struct s_cte_hand *hand);
 void print_table(void);
