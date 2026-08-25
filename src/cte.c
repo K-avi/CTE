@@ -88,6 +88,21 @@ void free_players(struct s_cte_players *players){
     free(players->players);
 }//tested; ok
 
+// Réinitialise les données d'un joueur entre deux manches :
+// vide la main, le tas de cartes remportées et remet nb_tablic à 0.
+// Ne touche pas au nom ni à l'id du joueur.
+void reset_player_round(struct s_cte_player_data *player){
+    player->hand.size = 0;
+    player->won_cards.size = 0;
+    player->nb_tablic = 0;
+}//tested; ok
+
+// Réinitialise tous les joueurs pour une nouvelle manche.
+void reset_all_players(struct s_cte_players *players){
+    for(uint8_t i = 0; i < players->size; i++){
+        reset_player_round(&players->players[i]);
+    }
+}//tested; ok
 
 /***********************DECK STUFF************************************************/
 
@@ -129,6 +144,26 @@ t_cteerr setup_game(struct s_cte_players *players){
     table.nb_cards_on_table = 4;
     deck.cur_card = 16;
     
+    return e_ok;
+}//tested; ok
+
+// Redistribue 6 cartes à chaque joueur (2 joueurs) depuis le paquet restant.
+// À appeler quand les mains des deux joueurs sont vides mais que deck.cur_card < 52.
+// Ne remet AUCUNE carte sur la table (contrairement à setup_game).
+// Retourne e_inval_val si le paquet est épuisé ou s'il n'y a pas 2 joueurs.
+t_cteerr deal_next_hand(struct s_cte_players *players){
+    if(!players) return e_null;
+    if(players->size != 2) return e_inval_val;
+    if(deck.cur_card + 12 > DECKSIZE) return e_inval_val; // plus assez de cartes
+
+    for(int i = 0; i < 6; i++){
+        players->players[0].hand.array[i] = deck.cards[deck.cur_card + i];
+        players->players[1].hand.array[i] = deck.cards[deck.cur_card + i + 6];
+    }
+    players->players[0].hand.size = 6;
+    players->players[1].hand.size = 6;
+    deck.cur_card += 12;
+
     return e_ok;
 }//tested; ok
 
@@ -176,7 +211,7 @@ void free_move_list(struct s_cte_move_list *list){
     list->max = 0;
 }
 
-t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player){
+t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player, bool *captured){
     if(!move || !player) return e_null;
 
     // Remove card played from hand
@@ -193,6 +228,7 @@ t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player){
         if(table.nb_cards_on_table < 52){
             table.cards_on_table[table.nb_cards_on_table++] = move->card_played;
         }
+        if(captured) *captured = false;
         return e_ok;
     }
 
@@ -216,8 +252,242 @@ t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player){
         player->won_cards.array[player->won_cards.size++] = move->cards_picked.array[i]; 
     }
 
+    if(captured) *captured = true;
     return e_ok;
 }
+
+// Attribue les cartes restantes sur la table au joueur qui a fait la dernière prise.
+// À appeler en fin de manche si table.nb_cards_on_table > 0.
+// last_captor_id : player_id du dernier joueur ayant effectué une prise (pas une pose).
+t_cteerr award_remaining_table_cards(struct s_cte_players *players, uint8_t last_captor_id){
+    if(!players) return e_null;
+    if(last_captor_id >= players->size) return e_inval_val;
+    if(table.nb_cards_on_table == 0) return e_ok; // rien à faire
+
+    struct s_cte_player_data *captor = &players->players[last_captor_id];
+    for(uint8_t i = 0; i < table.nb_cards_on_table; i++){
+        captor->won_cards.array[captor->won_cards.size++] = table.cards_on_table[i];
+    }
+    table.nb_cards_on_table = 0;
+
+    return e_ok;
+}
+
+/***********************GAME LOOP ************************************************/
+
+// Exécute une manche complète de Tablić.
+//
+// Séquence :
+//   1. Mélange + distribution initiale (6 cartes/joueur + 4 sur table) via setup_game().
+//   2. Boucle de jeu :
+//      a. Si les deux mains sont vides et le paquet non épuisé : deal_next_hand().
+//      b. Génération des coups légaux pour le joueur courant.
+//      c. Sélection d'un coup via config->evaluators[current_player_id].
+//      d. Exécution du coup ; mise à jour de last_captor_id si capture.
+//      e. Passage au joueur suivant.
+//   3. Attribution des cartes restantes sur la table au last_captor.
+//
+// Précondition : config->evaluators[i] != NULL pour tous les joueurs actifs.
+// Retourne e_inval_val si players->size != 2 (seul le mode 2 joueurs est supporté).
+t_cteerr run_round(struct s_cte_players *players, const s_cte_round_config *config){
+    if(!players || !config) return e_null;
+    if(players->size != 2) return e_inval_val;
+
+    // Vérifier que chaque joueur a bien un évaluateur
+    for(uint8_t i = 0; i < players->size; i++){
+        if(!config->evaluators[i]) return e_null;
+    }
+
+    t_cteerr err = setup_game(players);
+    if(err != e_ok) return err;
+
+    uint8_t current = config->first_player % players->size;
+    int8_t last_captor_id = -1; // -1 = aucune prise effectuée
+
+    for(;;){
+        // Vérifier la condition de fin : mains vides ET paquet épuisé
+        bool all_hands_empty = true;
+        for(uint8_t i = 0; i < players->size; i++){
+            if(players->players[i].hand.size > 0){
+                all_hands_empty = false;
+                break;
+            }
+        }
+
+        if(all_hands_empty){
+            if(deck.cur_card >= DECKSIZE) break; // fin de manche
+            err = deal_next_hand(players);
+            if(err != e_ok) return err;
+        }
+
+        // Sauter les joueurs à main vide (ne devrait pas arriver si deal est correct)
+        if(players->players[current].hand.size == 0){
+            current = (uint8_t)((current + 1) % players->size);
+            continue;
+        }
+
+        // Générer les coups légaux
+        struct s_cte_move_list moves;
+        err = init_move_list(&moves, 16);
+        if(err != e_ok) return err;
+
+        err = gen_all_moves(&moves, &players->players[current].hand);
+        if(err != e_ok){ free_move_list(&moves); return err; }
+
+        // Construire le snapshot d'état pour l'évaluateur
+        s_cte_game_state state = {
+            .table             = &table,
+            .players           = players,
+            .current_player_id = current,
+        };
+
+        // Appel à l'évaluateur : retourne l'index du coup choisi
+        uint16_t chosen_idx = config->evaluators[current](&state, &moves, config->eval_contexts[current]);
+        if(chosen_idx >= moves.size){ free_move_list(&moves); return e_inval_val; }
+
+        // Jouer le coup
+        bool captured = false;
+        err = play_move(&moves.moves[chosen_idx], &players->players[current], &captured);
+        free_move_list(&moves);
+        if(err != e_ok) return err;
+
+        if(captured) last_captor_id = (int8_t)current;
+
+        current = (uint8_t)((current + 1) % players->size);
+    }
+
+    // Attribuer les cartes restantes sur la table
+    if(table.nb_cards_on_table > 0 && last_captor_id >= 0){
+        err = award_remaining_table_cards(players, (uint8_t)last_captor_id);
+        if(err != e_ok) return err;
+    }
+
+    return e_ok;
+}
+
+/***********************SCORING & MATCH MANAGEMENT *******************************/
+
+// Calcule le score d'une manche pour chaque joueur.
+//
+// Règles :
+//   - card_points  : somme de __tab_points[card] pour chaque carte remportée.
+//   - majority_bonus : +3 si le joueur a >= 27 cartes (0 si égalité 26/26).
+//   - tablic_points : = nb_tablic du joueur (1 point par Tablić).
+//   - total         : somme des trois.
+//
+// scores[] doit être un tableau alloué par l'appelant de taille >= players->size.
+t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[]){
+    if(!players || !scores) return e_null;
+
+    uint8_t nb = players->size;
+
+    // Compter le nombre de cartes et les points de chaque joueur
+    for(uint8_t i = 0; i < nb; i++){
+        scores[i].card_points  = 0;
+        scores[i].tablic_points = players->players[i].nb_tablic;
+        for(uint8_t j = 0; j < players->players[i].won_cards.size; j++){
+            scores[i].card_points += get_points(players->players[i].won_cards.array[j]);
+        }
+    }
+
+    // Bonus de majorité (uniquement si un joueur a strictement >= 27 cartes)
+    // En cas d'égalité 26/26, personne ne reçoit le bonus.
+    for(uint8_t i = 0; i < nb; i++) scores[i].majority_bonus = 0;
+
+    if(nb == 2){
+        uint8_t n0 = players->players[0].won_cards.size;
+        uint8_t n1 = players->players[1].won_cards.size;
+        if(n0 >= 27 && n0 != n1) scores[0].majority_bonus = 3;
+        if(n1 >= 27 && n0 != n1) scores[1].majority_bonus = 3;
+    } else {
+        // Mode > 2 joueurs : le joueur avec le plus de cartes reçoit +3,
+        // sauf en cas d'égalité au sommet.
+        uint8_t max_cards = 0;
+        uint8_t max_count = 0;
+        for(uint8_t i = 0; i < nb; i++){
+            uint8_t nc = players->players[i].won_cards.size;
+            if(nc > max_cards){ max_cards = nc; max_count = 1; }
+            else if(nc == max_cards) max_count++;
+        }
+        if(max_cards >= 27 && max_count == 1){
+            for(uint8_t i = 0; i < nb; i++){
+                if(players->players[i].won_cards.size == max_cards){
+                    scores[i].majority_bonus = 3;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Total
+    for(uint8_t i = 0; i < nb; i++){
+        scores[i].total = scores[i].card_points + scores[i].majority_bonus + scores[i].tablic_points;
+    }
+
+    return e_ok;
+}//tested; ok
+
+// Initialise une structure de match.
+t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, uint16_t winning_score){
+    if(!match || !players) return e_null;
+    if(winning_score == 0) return e_inval_val;
+
+    match->players       = players;
+    match->winning_score = winning_score;
+    match->round_nb      = 0;
+    for(uint8_t i = 0; i < 4; i++) match->match_scores[i] = 0;
+
+    return e_ok;
+}//tested; ok
+
+// Retourne true si au moins un joueur a atteint winning_score.
+bool match_is_over(const struct s_cte_match *match){
+    if(!match) return false;
+    for(uint8_t i = 0; i < match->players->size; i++){
+        if(match->match_scores[i] >= match->winning_score) return true;
+    }
+    return false;
+}//tested; ok
+
+// Retourne l'indice du joueur gagnant, ou -1 si le match n'est pas encore terminé.
+// En cas d'égalité au-dessus du seuil, retourne l'indice le plus bas (à raffiner).
+int8_t match_winner(const struct s_cte_match *match){
+    if(!match || !match_is_over(match)) return -1;
+    int8_t winner = -1;
+    uint16_t best = 0;
+    for(uint8_t i = 0; i < match->players->size; i++){
+        if(match->match_scores[i] > best){
+            best   = match->match_scores[i];
+            winner = (int8_t)i;
+        }
+    }
+    return winner;
+}//tested; ok
+
+// Exécute un match complet (plusieurs manches) jusqu'à ce qu'un joueur atteigne
+// match->winning_score. Chaque manche : run_round → compute_round_score →
+// mise à jour des scores cumulatifs → reset des joueurs.
+t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
+    if(!match || !config) return e_null;
+
+    while(!match_is_over(match)){
+        t_cteerr err = run_round(match->players, config);
+        if(err != e_ok) return err;
+
+        s_cte_round_score scores[4] = {0};
+        err = compute_round_score(match->players, scores);
+        if(err != e_ok) return err;
+
+        for(uint8_t i = 0; i < match->players->size; i++){
+            match->match_scores[i] += scores[i].total;
+        }
+
+        match->round_nb++;
+        reset_all_players(match->players);
+    }
+
+    return e_ok;
+}//tested; ok
 
 /*********************** EXACT PARTITION & MOVE VALIDATION (DP) ********************/
 
@@ -478,3 +748,17 @@ void print_move(struct s_cte_move *move){
 
 t_cteerr print_won_cards();
 //t_cteerr count_points();
+
+/***********************EVALUATORS***********************************************/
+
+// Stub aléatoire : choisit un coup unifo-aléatoirement parmi les coups légaux.
+// ctx est ignoré. moves->size doit être > 0 (garanti par gen_all_moves
+// qui génère toujours au moins le coup de pose).
+uint16_t eval_random(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx)
+{
+    (void)state;
+    (void)ctx;
+    return (uint16_t)(rand() % moves->size);
+}//tested; ok

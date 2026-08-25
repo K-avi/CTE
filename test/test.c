@@ -14,6 +14,17 @@ int main(){
     assert(strcmp(players.players[0].player_name, "Alice") == 0);
     assert(strcmp(players.players[1].player_name, "Bob") == 0);
 
+    // ---- T7 : init_players — chemins d'erreur ----
+    struct s_cte_players p_err;
+    t_cteerr e7 = init_players(&p_err, 1, (char*[]){"Solo"});
+    assert(e7 == e_inval_val);
+
+    e7 = init_players(&p_err, 5, (char*[]){"A","B","C","D","E"});
+    assert(e7 == e_inval_val);
+
+    e7 = init_players(&p_err, 0, (char*[]){});
+    assert(e7 == e_inval_val);
+
     t_cteerr err = setup_game(&players);
     assert(err == e_ok);
 
@@ -25,6 +36,12 @@ int main(){
 
     assert(deck.cur_card == 16);
     assert(table.nb_cards_on_table == 4);
+
+    // ---- T8 : setup_game — contenu individuel de la table ----
+    assert(table.cards_on_table[0] == deck.cards[12]);
+    assert(table.cards_on_table[1] == deck.cards[13]);
+    assert(table.cards_on_table[2] == deck.cards[14]);
+    assert(table.cards_on_table[3] == deck.cards[15]);
 
     //verify that the deck is shuffled (i.e at least one card is different from the original order)
     //init srand to a fixed seed
@@ -152,6 +169,18 @@ int main(){
     move_fp3.cards_picked.array = (uint8_t[]){7, 3}; // 9 clubs, 5 clubs
     err = is_legal(&legal, &move_fp3);
     assert(err == e_ok && !legal);
+
+    // ---- T1 : is_legal — chemins d'erreur NULL ----
+    struct s_cte_move dummy_move = {
+        .card_played = 8,
+        .cards_picked = { .size = 0, .max = 0, .array = NULL }
+    };
+    t_cteerr err_null = is_legal(NULL, &dummy_move);
+    assert(err_null == e_null);
+
+    bool dummy_legal = false;
+    err_null = is_legal(&dummy_legal, NULL);
+    assert(err_null == e_null);
 
     // -------------------------------------------------------------
     // Test is_legal: Ace edge cases (1 vs 11, multiple Aces)
@@ -379,6 +408,63 @@ int main(){
     }
     free_move_list(&all_moves);
 
+    // ---- T4 : gen_card_moves — table vide ----
+    table.nb_cards_on_table = 0;
+
+    struct s_cte_move_list ml_empty;
+    t_cteerr err_e = init_move_list(&ml_empty, 4);
+    assert(err_e == e_ok);
+    err_e = gen_card_moves(&ml_empty, 8); // 10 clubs
+    assert(err_e == e_ok);
+    assert(ml_empty.size == 1); // seul le drop
+    assert(ml_empty.moves[0].cards_picked.size == 0); // c'est bien un drop
+    assert(ml_empty.moves[0].card_played == 8);
+    free_move_list(&ml_empty);
+
+    // ---- T5 : gen_all_moves — table vide, main à 1 carte ----
+    table.nb_cards_on_table = 0;
+
+    struct s_cte_hand hand_one;
+    hand_one.size = 1;
+    hand_one.array[0] = 5; // 7 clubs
+
+    struct s_cte_move_list ml_one;
+    t_cteerr err_o = init_move_list(&ml_one, 4);
+    assert(err_o == e_ok);
+    err_o = gen_all_moves(&ml_one, &hand_one);
+    assert(err_o == e_ok);
+    assert(ml_one.size == 1);
+    assert(ml_one.moves[0].card_played == 5);
+    assert(ml_one.moves[0].cards_picked.size == 0);
+    free_move_list(&ml_one);
+
+    // ---- T6 : gen_card_moves — aucun doublon ----
+    table.cards_on_table[0] = 21;
+    table.cards_on_table[1] = 5;
+    table.cards_on_table[2] = 1;
+    table.cards_on_table[3] = 2;
+    table.cards_on_table[4] = 4;
+    table.nb_cards_on_table = 5;
+
+    struct s_cte_move_list ml_nodup;
+    err = init_move_list(&ml_nodup, 16);
+    assert(err == e_ok);
+    err = gen_card_moves(&ml_nodup, 8);
+    assert(err == e_ok);
+
+    for (uint16_t i = 0; i < ml_nodup.size; i++) {
+        for (uint16_t j = i + 1; j < ml_nodup.size; j++) {
+            uint64_t mask_i = 0, mask_j = 0;
+            for (uint8_t k = 0; k < ml_nodup.moves[i].cards_picked.size; k++)
+                mask_i |= (1ULL << ml_nodup.moves[i].cards_picked.array[k]);
+            for (uint8_t k = 0; k < ml_nodup.moves[j].cards_picked.size; k++)
+                mask_j |= (1ULL << ml_nodup.moves[j].cards_picked.array[k]);
+            assert(!(ml_nodup.moves[i].card_played == ml_nodup.moves[j].card_played
+                     && mask_i == mask_j));
+        }
+    }
+    free_move_list(&ml_nodup);
+
     // -------------------------------------------------------------
     // Test play_move: Drop, Capture & Tablic
     // -------------------------------------------------------------
@@ -392,8 +478,10 @@ int main(){
     players.players[0].nb_tablic = 0;
 
     struct s_cte_move test_drop = { .card_played = 8, .cards_picked = { .size = 0, .max = 0, .array = NULL } };
-    err = play_move(&test_drop, &players.players[0]);
+    bool captured = true; // doit passer à false pour un drop
+    err = play_move(&test_drop, &players.players[0], &captured);
     assert(err == e_ok);
+    assert(captured == false);
     assert(players.players[0].hand.size == 0);
     assert(table.nb_cards_on_table == 3);
     assert(table.cards_on_table[2] == 8);
@@ -413,15 +501,459 @@ int main(){
     test_tablic.cards_picked.array = malloc(sizeof(uint8_t));
     test_tablic.cards_picked.array[0] = 21;
 
-    err = play_move(&test_tablic, &players.players[0]);
+    err = play_move(&test_tablic, &players.players[0], &captured);
     assert(err == e_ok);
+    assert(captured == true);
     assert(players.players[0].hand.size == 0);
     assert(table.nb_cards_on_table == 0);
     assert(players.players[0].nb_tablic == 1);
     assert(players.players[0].won_cards.size == 2);
     free(test_tablic.cards_picked.array);
 
+    // ---- T2 : play_move — capture multi-cartes non-Tablic ----
+    table.nb_cards_on_table = 3;
+    table.cards_on_table[0] = 5; // 7 clubs
+    table.cards_on_table[1] = 1; // 3 clubs
+    table.cards_on_table[2] = 0; // 2 clubs (reste sur la table)
+    players.players[0].hand.size = 1;
+    players.players[0].hand.array[0] = 8; // 10 clubs
+    players.players[0].won_cards.size = 0;
+    players.players[0].nb_tablic = 0;
+
+    struct s_cte_move test_multi_cap;
+    test_multi_cap.card_played = 8;
+    test_multi_cap.cards_picked.size = 2;
+    test_multi_cap.cards_picked.max = 2;
+    test_multi_cap.cards_picked.array = malloc(2 * sizeof(uint8_t));
+    test_multi_cap.cards_picked.array[0] = 5;
+    test_multi_cap.cards_picked.array[1] = 1;
+
+    captured = false;
+    err = play_move(&test_multi_cap, &players.players[0], &captured);
+    assert(err == e_ok);
+    assert(captured == true);
+    assert(players.players[0].hand.size == 0);
+    assert(table.nb_cards_on_table == 1);
+    assert(table.cards_on_table[0] == 0); // 2 clubs est resté
+    assert(players.players[0].won_cards.size == 3); // 10 clubs + 7 clubs + 3 clubs
+    assert(players.players[0].nb_tablic == 0);
+
+    bool found_8 = false, found_5 = false, found_1 = false;
+    for (int i = 0; i < players.players[0].won_cards.size; i++) {
+        if (players.players[0].won_cards.array[i] == 8) found_8 = true;
+        if (players.players[0].won_cards.array[i] == 5) found_5 = true;
+        if (players.players[0].won_cards.array[i] == 1) found_1 = true;
+    }
+    assert(found_8 && found_5 && found_1);
+    free(test_multi_cap.cards_picked.array);
+
+    // ---- T3 : play_move — paramètre captured = NULL ----
+    table.nb_cards_on_table = 1;
+    table.cards_on_table[0] = 21; // 10 diamonds
+    players.players[0].hand.size = 1;
+    players.players[0].hand.array[0] = 8; // 10 clubs
+
+    // Drop avec captured = NULL
+    struct s_cte_move drop_null = {
+        .card_played = 8,
+        .cards_picked = { .size = 0, .max = 0, .array = NULL }
+    };
+    t_cteerr err_cn = play_move(&drop_null, &players.players[0], NULL);
+    assert(err_cn == e_ok);
+    assert(table.nb_cards_on_table == 2);
+
+    // Capture avec captured = NULL
+    players.players[0].hand.size = 1;
+    players.players[0].hand.array[0] = 8; // 10 clubs
+    struct s_cte_move cap_null;
+    cap_null.card_played = 8;
+    cap_null.cards_picked.size = 1;
+    cap_null.cards_picked.max = 1;
+    cap_null.cards_picked.array = malloc(sizeof(uint8_t));
+    cap_null.cards_picked.array[0] = 21;
+
+    uint8_t won_before = players.players[0].won_cards.size;
+    t_cteerr err_cn2 = play_move(&cap_null, &players.players[0], NULL);
+    assert(err_cn2 == e_ok);
+    assert(players.players[0].won_cards.size == won_before + 2);
+    free(cap_null.cards_picked.array);
+
+    // ---- Tests award_remaining_table_cards ----
+    // Cas 1 : table non vide -> attribuer au joueur 0
+    table.nb_cards_on_table = 3;
+    table.cards_on_table[0] = 5;
+    table.cards_on_table[1] = 10;
+    table.cards_on_table[2] = 15;
+    players.players[0].won_cards.size = 0;
+    err = award_remaining_table_cards(&players, 0);
+    assert(err == e_ok);
+    assert(table.nb_cards_on_table == 0);
+    assert(players.players[0].won_cards.size == 3);
+    assert(players.players[0].won_cards.array[0] == 5);
+    assert(players.players[0].won_cards.array[1] == 10);
+    assert(players.players[0].won_cards.array[2] == 15);
+
+    // ---- T10 : award_remaining_table_cards — append sur won_cards non vide ----
+    players.players[1].won_cards.size = 5;
+    for (uint8_t i = 0; i < 5; i++) players.players[1].won_cards.array[i] = i;
+
+    table.nb_cards_on_table = 2;
+    table.cards_on_table[0] = 30;
+    table.cards_on_table[1] = 31;
+
+    t_cteerr err_t10 = award_remaining_table_cards(&players, 1);
+    assert(err_t10 == e_ok);
+    assert(table.nb_cards_on_table == 0);
+    assert(players.players[1].won_cards.size == 7); // 5 + 2
+    assert(players.players[1].won_cards.array[5] == 30);
+    assert(players.players[1].won_cards.array[6] == 31);
+
+    // Cas 2 : table vide -> aucun effet
+    players.players[1].won_cards.size = 0;
+    err = award_remaining_table_cards(&players, 1);
+    assert(err == e_ok);
+    assert(players.players[1].won_cards.size == 0); // inchangé
+
+    // Cas 3 : id invalide
+    table.nb_cards_on_table = 1;
+    table.cards_on_table[0] = 7;
+    err = award_remaining_table_cards(&players, 99);
+    assert(err == e_inval_val);
+    assert(table.nb_cards_on_table == 1); // table inchangée
+    table.nb_cards_on_table = 0; // nettoyage
+
+    // ---- Tests reset_player_round / reset_all_players ----
+    // Après le tablic précédent, player[0] : won_cards.size=2, nb_tablic=1, hand.size=0
+    // On simule un état non-vide pour être sûr de tester le reset.
+    players.players[1].hand.size = 3;
+    players.players[1].won_cards.size = 10;
+    players.players[1].nb_tablic = 2;
+
+    // reset d'un seul joueur
+    reset_player_round(&players.players[0]);
+    assert(players.players[0].hand.size == 0);
+    assert(players.players[0].won_cards.size == 0);
+    assert(players.players[0].nb_tablic == 0);
+    // Le nom et l'id ne doivent pas être altérés
+    assert(players.players[0].player_id == 0);
+    assert(strcmp(players.players[0].player_name, "Alice") == 0);
+
+    // reset de tous les joueurs
+    reset_all_players(&players);
+    assert(players.players[1].hand.size == 0);
+    assert(players.players[1].won_cards.size == 0);
+    assert(players.players[1].nb_tablic == 0);
+    assert(players.players[1].player_id == 1);
+    assert(strcmp(players.players[1].player_name, "Bob") == 0);
+
+    // ---- Tests deal_next_hand ----
+    // On repart d'une partie fraîchement initialisée pour avoir un état propre.
+    // setup_game a déjà eu lieu plus haut. On réinitialise manuellement l'état du
+    // paquet et des mains pour simuler un début de manche en bonne et due forme.
+    // État après setup_game : deck.cur_card == 16, 12 cartes distribuées + 4 en table.
+
+    // Simuler que les joueurs ont joué toutes leurs cartes (mains vides)
+    reset_all_players(&players);
+
+    // Capturer l'état de la table avant deal (T9)
+    uint8_t table_nb_before = table.nb_cards_on_table;
+    uint8_t table_snap[52];
+    for (int i = 0; i < table.nb_cards_on_table; i++)
+        table_snap[i] = table.cards_on_table[i];
+
+    // Tour 2 : redistribution depuis deck.cur_card == 16
+    uint8_t cur_before = deck.cur_card;
+    err = deal_next_hand(&players);
+    assert(err == e_ok);
+    assert(players.players[0].hand.size == 6);
+    assert(players.players[1].hand.size == 6);
+    assert(deck.cur_card == cur_before + 12);
+    // T9 : table inchangée après deal_next_hand
+    assert(table.nb_cards_on_table == table_nb_before);
+    for (int i = 0; i < table_nb_before; i++)
+        assert(table.cards_on_table[i] == table_snap[i]);
+
+    // Vérifier que les cartes données sont bien celles du paquet à partir de cur_before
+    for(int i = 0; i < 6; i++){
+        assert(players.players[0].hand.array[i] == deck.cards[cur_before + i]);
+        assert(players.players[1].hand.array[i] == deck.cards[cur_before + i + 6]);
+    }
+
+    // Tour 3 : deuxième redistribution
+    reset_all_players(&players);
+    cur_before = deck.cur_card;
+    err = deal_next_hand(&players);
+    assert(err == e_ok);
+    assert(deck.cur_card == cur_before + 12);
+
+    // Tour 4 : troisième redistribution (dernière — paquet à 52-16 = 36 cartes, 3x12)
+    reset_all_players(&players);
+    cur_before = deck.cur_card;
+    err = deal_next_hand(&players);
+    assert(err == e_ok);
+    assert(deck.cur_card == 52); // paquet épuisé
+
+    // Refus quand le paquet est épuisé
+    reset_all_players(&players);
+    err = deal_next_hand(&players);
+    assert(err == e_inval_val);
+
+    // Vérifier qu'un deal échoué ne modifie pas les mains
+    players.players[0].hand.size = 3; // simule un état non vide
+    players.players[1].hand.size = 2;
+    err = deal_next_hand(&players); // paquet vide -> refus
+    assert(err == e_inval_val);
+    assert(players.players[0].hand.size == 3); // inchangé
+    assert(players.players[1].hand.size == 2); // inchangé
+
+    // ---- Tests run_round ----
+    // On utilise eval_random avec une seed fixe pour la reproductibilité.
+    // On repart de joueurs frais (reset) pour avoir un état propre.
+    reset_all_players(&players);
+
+    s_cte_round_config config = {
+        .first_player    = 0,
+        .evaluators      = { eval_random, eval_random, NULL, NULL },
+        .eval_contexts   = { NULL, NULL, NULL, NULL },
+    };
+
+    srand(12345);
+    err = run_round(&players, &config);
+    assert(err == e_ok);
+
+    // Invariant 1 : le paquet est épuisé
+    assert(deck.cur_card == 52);
+
+    // Invariant 2 : la table est vide (les cartes résiduelles ont été attribuées)
+    assert(table.nb_cards_on_table == 0);
+
+    // Invariant 3 : les mains sont vides
+    assert(players.players[0].hand.size == 0);
+    assert(players.players[1].hand.size == 0);
+
+    // Invariant 4 : conservation des cartes — toutes les 52 cartes sont
+    // exactement une fois dans les won_cards des joueurs.
+    uint8_t card_seen[52] = {0};
+    for(int p = 0; p < players.size; p++){
+        for(int j = 0; j < players.players[p].won_cards.size; j++){
+            uint8_t c = players.players[p].won_cards.array[j];
+            assert(c < 52);
+            card_seen[c]++;
+        }
+    }
+    uint16_t total_won = 0;
+    for(int p = 0; p < players.size; p++)
+        total_won += players.players[p].won_cards.size;
+    assert(total_won == 52);
+    for(int i = 0; i < 52; i++)
+        assert(card_seen[i] == 1);
+
+    // ---- T12 : total card_points après manche complète == 22 ----
+    s_cte_round_score sc_total[2] = {0};
+    t_cteerr err_t12 = compute_round_score(&players, sc_total);
+    assert(err_t12 == e_ok);
+    // Somme de __tab_points sur les 52 cartes = 6 (clubs) + 6 (diamonds) + 5 (hearts) + 5 (spades) = 22
+    assert(sc_total[0].card_points + sc_total[1].card_points == 22);
+
+    // Invariant 5 : evaluateur NULL retourne e_null
+    s_cte_round_config bad_config = {
+        .first_player  = 0,
+        .evaluators    = { NULL, eval_random, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+    reset_all_players(&players);
+    err = run_round(&players, &bad_config);
+    assert(err == e_null);
+
+    // ---- Tests compute_round_score (B.1) ----
+
+    // Cas 1 : majorité nette (player 0 a 30 cartes, player 1 a 22)
+    // On assigne 30 cartes à player 0 et 22 à player 1 manuellement.
+    // Les cartes 0..29 (clubs 2..King + diamonds 2..6) et 30..51 pour player 1.
+    reset_all_players(&players);
+    // Player 0 : cartes 0..29 (30 cartes) — dont carte 0 (2♣, 1pt), carte 8 (10♣, 1pt), etc.
+    for(uint8_t i = 0; i < 30; i++) players.players[0].won_cards.array[i] = i;
+    players.players[0].won_cards.size = 30;
+    players.players[0].nb_tablic = 2;
+    // Player 1 : cartes 30..51 (22 cartes)
+    for(uint8_t i = 0; i < 22; i++) players.players[1].won_cards.array[i] = 30 + i;
+    players.players[1].won_cards.size = 22;
+    players.players[1].nb_tablic = 0;
+
+    s_cte_round_score scores[2] = {0};
+    err = compute_round_score(&players, scores);
+    assert(err == e_ok);
+
+    // Player 0 : bonus majorité +3, tablic +2
+    assert(scores[0].majority_bonus == 3);
+    assert(scores[0].tablic_points  == 2);
+    // Player 1 : pas de bonus
+    assert(scores[1].majority_bonus == 0);
+    assert(scores[1].tablic_points  == 0);
+
+    // Vérifier card_points via somme brute des __tab_points
+    uint8_t expected_p0 = 0;
+    for(uint8_t i = 0; i < 30; i++) expected_p0 += get_points(i);
+    assert(scores[0].card_points == expected_p0);
+    uint8_t expected_p1 = 0;
+    for(uint8_t i = 30; i < 52; i++) expected_p1 += get_points(i);
+    assert(scores[1].card_points == expected_p1);
+
+    assert(scores[0].total == scores[0].card_points + 3 + 2);
+    assert(scores[1].total == scores[1].card_points + 0 + 0);
+
+    // Cas 2 : égalité 26/26 → aucun bonus de majorité
+    reset_all_players(&players);
+    for(uint8_t i = 0; i < 26; i++) players.players[0].won_cards.array[i] = i;
+    players.players[0].won_cards.size = 26;
+    for(uint8_t i = 0; i < 26; i++) players.players[1].won_cards.array[i] = 26 + i;
+    players.players[1].won_cards.size = 26;
+
+    s_cte_round_score scores2[2] = {0};
+    err = compute_round_score(&players, scores2);
+    assert(err == e_ok);
+    assert(scores2[0].majority_bonus == 0);
+    assert(scores2[1].majority_bonus == 0);
+
+    // ---- T11 : compute_round_score — valeurs absolues ----
+    reset_all_players(&players);
+    players.players[0].won_cards.array[0] = 0;  // 2 clubs (1 pt)
+    players.players[0].won_cards.array[1] = 8;  // 10 clubs (1 pt)
+    players.players[0].won_cards.array[2] = 9;  // Ace clubs (1 pt)
+    players.players[0].won_cards.array[3] = 21; // 10 diamonds (2 pts)
+    players.players[0].won_cards.array[4] = 22; // Ace diamonds (1 pt)
+    players.players[0].won_cards.size = 5;
+    players.players[0].nb_tablic = 0;
+
+    players.players[1].won_cards.array[0] = 1; // 3 clubs
+    players.players[1].won_cards.array[1] = 2; // 4 clubs
+    players.players[1].won_cards.array[2] = 3; // 5 clubs
+    players.players[1].won_cards.array[3] = 4; // 6 clubs
+    players.players[1].won_cards.array[4] = 5; // 7 clubs
+    players.players[1].won_cards.array[5] = 6; // 8 clubs
+    players.players[1].won_cards.array[6] = 7; // 9 clubs
+    players.players[1].won_cards.size = 7;
+    players.players[1].nb_tablic = 0;
+
+    s_cte_round_score sc_abs[2] = {0};
+    t_cteerr err_t11 = compute_round_score(&players, sc_abs);
+    assert(err_t11 == e_ok);
+    assert(sc_abs[0].card_points == 6);
+    assert(sc_abs[0].majority_bonus == 0);
+    assert(sc_abs[0].tablic_points == 0);
+    assert(sc_abs[0].total == 6);
+
+    assert(sc_abs[1].card_points == 0);
+    assert(sc_abs[1].majority_bonus == 0);
+    assert(sc_abs[1].tablic_points == 0);
+    assert(sc_abs[1].total == 0);
+
+    // ---- T16 : compute_round_score — 27 vs 25 (seuil exact) ----
+    reset_all_players(&players);
+    for (uint8_t i = 0; i < 27; i++) players.players[0].won_cards.array[i] = i;
+    players.players[0].won_cards.size = 27;
+    for (uint8_t i = 0; i < 25; i++) players.players[1].won_cards.array[i] = 27 + i;
+    players.players[1].won_cards.size = 25;
+
+    s_cte_round_score sc_27[2] = {0};
+    t_cteerr err_t16 = compute_round_score(&players, sc_27);
+    assert(err_t16 == e_ok);
+    assert(sc_27[0].majority_bonus == 3);
+    assert(sc_27[1].majority_bonus == 0);
+
+    // ---- Tests B.2 : init_match, match_is_over, match_winner, run_match ----
+
+    reset_all_players(&players);
+
+    // ---- T14 : init_match — winning_score = 0 ----
+    struct s_cte_match match_bad;
+    t_cteerr err_t14 = init_match(&match_bad, &players, 0);
+    assert(err_t14 == e_inval_val);
+
+    struct s_cte_match match;
+    err = init_match(&match, &players, 101);
+    assert(err == e_ok);
+    assert(match.winning_score == 101);
+    assert(match.round_nb == 0);
+    assert(match.match_scores[0] == 0);
+    assert(match.match_scores[1] == 0);
+
+    // match_is_over : faux au départ
+    assert(!match_is_over(&match));
+    // match_winner : -1 si pas terminé
+    assert(match_winner(&match) == -1);
+
+    // Simuler un score déjà au-dessus du seuil
+    match.match_scores[0] = 101;
+    assert(match_is_over(&match));
+    int8_t winner = match_winner(&match);
+    assert(winner == 0);
+    match.match_scores[0] = 0; // reset
+
+    // ---- T13 : match_winner — égalité / scores au-dessus du seuil ----
+    match.match_scores[0] = 105;
+    match.match_scores[1] = 110;
+    assert(match_is_over(&match));
+    assert(match_winner(&match) == 1);
+
+    match.match_scores[0] = 105;
+    match.match_scores[1] = 105;
+    assert(match_is_over(&match));
+    int8_t tie_winner = match_winner(&match);
+    assert(tie_winner >= 0);
+
+    match.match_scores[0] = 0;
+    match.match_scores[1] = 0;
+
+    // run_match : match complet jusqu'à 101 avec eval_random
+    srand(99);
+    err = run_match(&match, &config);
+    assert(err == e_ok);
+    assert(match_is_over(&match));
+    assert(match_winner(&match) >= 0);
+    assert(match.round_nb > 0);
+
+    // Après run_match, vérifier que les mains sont vides (reset_all_players fait en interne)
+    assert(players.players[0].hand.size == 0);
+    assert(players.players[1].hand.size == 0);
+
+    // ---- T15 : run_round — fuzz conservation cartes sur 20 seeds ----
+    s_cte_round_config fuzz_config = {
+        .first_player  = 0,
+        .evaluators    = { eval_random, eval_random, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    for (int seed = 0; seed < 20; seed++) {
+        srand((unsigned)seed * 1337 + 42);
+        reset_all_players(&players);
+
+        t_cteerr err_fuzz = run_round(&players, &fuzz_config);
+        assert(err_fuzz == e_ok);
+
+        // Invariant : deck épuisé
+        assert(deck.cur_card == 52);
+        // Invariant : table vide
+        assert(table.nb_cards_on_table == 0);
+        // Invariant : mains vides
+        assert(players.players[0].hand.size == 0);
+        assert(players.players[1].hand.size == 0);
+        // Invariant : conservation — exactement 52 cartes dans won_cards
+        uint8_t fuzz_seen[52] = {0};
+        for (int p = 0; p < players.size; p++)
+            for (int j = 0; j < players.players[p].won_cards.size; j++)
+                fuzz_seen[players.players[p].won_cards.array[j]]++;
+        uint16_t fuzz_total = 0;
+        for (int p = 0; p < players.size; p++)
+            fuzz_total += players.players[p].won_cards.size;
+        assert(fuzz_total == 52);
+        for (int i = 0; i < 52; i++)
+            assert(fuzz_seen[i] == 1);
+    }
+
     free_players(&players);
+
+    printf("All tests passed\n");
 
     return 0;
 }

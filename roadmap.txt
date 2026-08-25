@@ -1,29 +1,48 @@
-Steps : 
+Steps & Roadmap :
 
-Game : 
+1. Game Engine Core :
+   [x] Deck representation and Fisher-Yates shuffle
+   [x] Player hand, won cards tracking, and dynamic players management
+   [x] Exact legal moves validation via Bitmask DP (is_legal, Ace 1/11 handling)
+   [x] Exhaustive move generation (gen_card_moves, gen_all_moves)
+   [x] Play legal move execution (play_move, drop on table, Tablic detection)
+   [x] Comprehensive unit test suite with AddressSanitizer/UBSan
+   [x] Full Game Loop:
+        - Turn-by-turn player alternation (run_round)
+        - Successive card deals : deal_next_hand (3x redistribution after setup)
+        - Award remaining table cards to last capturing player (award_remaining_table_cards)
+        - Generic evaluator interface (t_evaluator, s_cte_round_config)
+   [x] Round scoring & match management:
+        - Summing captured card points (compute_round_score)
+        - Majority cards bonus (+3 points for >= 27 cards, 0 if 26/26 tie)
+        - Tablic bonus points (+1 each)
+        - Configurable winning threshold (run_match, s_cte_match)
 
-- shuffle deck, 
-- keep track of player hand / won cards
-        I think the table and draw will be global variables, whereas the player hand / won cards  
-        will be allocated at runtime to accomodate for 4 players variant. 
-        I don't think it would be unreasonable to have space for the 4 players statically allocated 
-        but I probably won't do it bc I'll implement 4 players later
+2. Interface :
+   [ ] Interactive CLI (game board display, human input, AI vs human / 2 players)
+   [ ] TUI (ncurses)
+   [ ] Potential GUI (Raylib, SDL, or Web wrapper)
 
-        I think each player should have a move struct or smtg
-- detect legal moves (?)
-- play legal moves (?)
-- cli interface 
-- gui? 
+3. AI & Search :
+   [x] Generic evaluator interface (t_evaluator / s_cte_round_config) + eval_random stub
+   [ ] Basic heuristic evaluation:
+        - Greedy point capture maximization
+        - Drop strategy: minimize opponent capture opportunities
+   [ ] Advanced AI:
+       - Card counting & probability tracking of remaining deck / opponent hand
+       - Minimax / Expectiminimax with Alpha-Beta pruning
+       - Monte Carlo Tree Search (MCTS)
 
-- write tests at some point
-
-IA : 
-
-- Move Generation 
-- basic choice function 
-    - play the hand that gives you the most point
-    - if you can't, drop a card that creates the least sums possible
-
-- advanced choice function : 
-    - count cards maybe 
-    - maybe calculate moves idk
+4. HPC & Architecture Optimizations (Future) :
+   [ ] Reentrant game state:
+       - Encapsulate global deck & table into a single `s_cte_game` struct
+       - Eliminate dynamic allocations in move generation (use compact stack arrays)
+   [ ] 64-bit Bitboard representation:
+       - Represent 52-card sets as `uint64_t` bitboards
+       - Fast bitwise set operations with hardware BMI2 instructions (`POPCNT`, `TZCNT`, `BLSR`)
+   [ ] Multithreading:
+       - Parallel MCTS rollouts and tree search across CPU cores
+       - Mass self-play game simulation for heuristic tuning / reinforcement learning
+   [ ] SIMD Vectorization (AVX2 / AVX-512 / NEON):
+       - Inter-game batch vectorization (Structure of Arrays - SoA)
+       - Parallel batch rollouts and SIMD-accelerated linear/NNUE evaluations
