@@ -26,6 +26,8 @@ Steps & Roadmap :
 2. Interface :
    [x] Interactive CLI (game board display, human input, AI vs human / 2 players / AI vs AI, Unicode & ASCII styles)
    [x] TUI (ncurses minimalist with color pairs, arrows navigation & dynamic board)
+   [ ] Ncurses fancier TUI 
+   [ ] AI x AI screensaver mode
    [ ] Potential GUI (Raylib, SDL, or Web wrapper)
 
 3. AI & Search :

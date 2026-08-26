@@ -1,6 +1,0 @@
-CTE stands for C Tablic Engine.
-
-Tablic is a card game from the Balkan (see https://en.wikipedia.org/wiki/Tablanette)
-
-CTE will be a very simple engine that will be able to play tablic. 
-I might make a dedicated GUI for it, but I also might not.
