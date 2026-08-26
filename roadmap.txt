@@ -17,6 +17,10 @@ Steps & Roadmap :
         - Majority cards bonus (+3 points for >= 27 cards, 0 if 26/26 tie)
         - Tablic bonus points (+1 each)
         - Configurable winning threshold (run_match, s_cte_match)
+   [ ] 3 & 4 player support
+   [ ] cli Configurable AI evaluation function
+   [x] separate backend (move choosing) and frontend (cli/tui/gui) completely
+   [x] split files & headers (cleanup)
 
 2. Interface :
    [x] Interactive CLI (game board display, human input, AI vs human / 2 players / AI vs AI, Unicode & ASCII styles)
