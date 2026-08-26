@@ -1,0 +1,568 @@
+#include "backend_bitboard.h"
+#include "bitboard_tables.h"
+#include <stdlib.h>
+#include <string.h>
+
+void bitboard_from_game(s_cte_bitboard_state *bb_state, const s_cte_game *game){
+    if(!bb_state || !game) return;
+    memset(bb_state, 0, sizeof(s_cte_bitboard_state));
+
+    bb_state->table_bb = 0;
+    for(uint8_t i = 0; i < game->table.nb_cards_on_table; i++){
+        t_card c = game->table.cards_on_table[i];
+        if(c < 52) bb_state->table_bb |= (1ULL << c);
+    }
+
+    bb_state->nb_players = game->players.size;
+    bb_state->is_team_mode = game->is_team_mode;
+    bb_state->last_captor_id = game->last_captor_id;
+    bb_state->current_player_id = game->current_player_id;
+
+    for(uint8_t p = 0; p < game->players.size; p++){
+        const struct s_cte_player_data *pl = &game->players.players[p];
+        bb_state->hand_count[p] = pl->hand.size;
+        bb_state->hand_bb[p] = 0;
+        for(uint8_t i = 0; i < pl->hand.size; i++){
+            t_card c = pl->hand.array[i];
+            if(c < 52) bb_state->hand_bb[p] |= (1ULL << c);
+        }
+
+        bb_state->won_count[p] = pl->won_cards.size;
+        bb_state->won_bb[p] = 0;
+        uint8_t pts = 0;
+        for(uint8_t i = 0; i < pl->won_cards.size; i++){
+            t_card c = pl->won_cards.array[i];
+            if(c < 52){
+                bb_state->won_bb[p] |= (1ULL << c);
+                pts += get_points(c);
+            }
+        }
+        bb_state->card_points[p] = pts;
+        bb_state->tablic_count[p] = pl->nb_tablic;
+    }
+}
+
+
+void bitboard_gen_all_compact_moves(s_cte_bitboard_move_list *out_list, uint64_t table_bb, const struct s_cte_hand *hand){
+    if(!out_list || !hand) return;
+    out_list->size = 0;
+    if(hand->size == 0) return;
+
+    // 1. Drop moves for all cards in hand
+    for(uint8_t h = 0; h < hand->size; h++){
+        if(out_list->size < 1024){
+            out_list->moves[out_list->size++] = (s_cte_bitboard_move){ hand->array[h], 0 };
+        }
+    }
+
+    if(table_bb == 0) return;
+
+    // 2. 1-Pass carry-rippler submask evaluation over table_bb
+    for(uint64_t sub = table_bb; sub > 0; sub = (sub - 1) & table_bb){
+        uint8_t picked[16];
+        uint8_t n = 0;
+        uint64_t temp = sub;
+        while(temp > 0){
+            picked[n++] = (uint8_t)__builtin_ctzll(temp);
+            temp &= (temp - 1);
+        }
+
+        for(uint8_t h = 0; h < hand->size; h++){
+            t_card card = hand->array[h];
+            bool ace = is_ace(card);
+            uint8_t target = ace ? 11 : get_value(card);
+
+            bool valid = false;
+            if(ace){
+                valid = (is_exact_partition(picked, n, 11) || is_exact_partition(picked, n, 1));
+            } else {
+                valid = is_exact_partition(picked, n, target);
+            }
+
+            if(valid && out_list->size < 1024){
+                out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, sub };
+            }
+        }
+    }
+}
+
+// Push move directly with zero heap allocations (100% stack)
+static t_cteerr bitboard_push_move(struct s_cte_move_list *moves, t_card card, uint64_t capture_mask){
+    struct s_cte_move m;
+    m.card_played = card;
+
+    if(capture_mask == 0){
+        m.cards_picked.size = 0;
+    } else {
+        uint8_t pop = (uint8_t)__builtin_popcountll(capture_mask);
+        m.cards_picked.size = pop;
+        uint64_t temp = capture_mask;
+        uint8_t idx = 0;
+        while(temp > 0){
+            int bit = __builtin_ctzll(temp);
+            m.cards_picked.array[idx++] = (uint8_t)bit;
+            temp &= (temp - 1); // BMI2 BLSR
+        }
+    }
+
+    if(moves->size >= moves->max){
+        uint16_t new_cap = (moves->max == 0) ? 16 : (moves->max * 2);
+        struct s_cte_move *new_arr = realloc(moves->moves, sizeof(struct s_cte_move) * new_cap);
+        if(!new_arr) return e_realloc;
+        moves->moves = new_arr;
+        moves->max = new_cap;
+    }
+
+    moves->moves[moves->size++] = m;
+    return e_ok;
+}
+
+// Compute table total nominal sum for sum-bound pruning
+static inline uint16_t compute_table_max_sum(uint64_t table_bb){
+    uint16_t sum = 0;
+    uint64_t temp = table_bb;
+    while(temp > 0){
+        int bit = __builtin_ctzll(temp);
+        sum += get_value((t_card)bit);
+        temp &= (temp - 1);
+    }
+    return sum;
+}
+
+// -------------------------------------------------------------
+// 1. Dynamic Carry-Rippler Bitboard Engine (0 KB RAM)
+// -------------------------------------------------------------
+t_cteerr bitboard_gen_card_moves_dynamic(struct s_cte_move_list *moves, uint64_t table_bb, t_card card){
+    if(!moves) return e_null;
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, 16);
+        if(err != e_ok) return err;
+    }
+
+    // Always push drop move (capture mask = 0)
+    t_cteerr err = bitboard_push_move(moves, card, 0);
+    if(err != e_ok) return err;
+
+    if(table_bb == 0) return e_ok;
+
+    bool ace = is_ace(card);
+    uint8_t target_v = ace ? 11 : get_value(card);
+
+    // Sum-bound pruning: if table total sum < target, no capture is possible
+    uint16_t table_max_sum = compute_table_max_sum(table_bb);
+    if(!ace && table_max_sum < target_v) return e_ok;
+    if(ace && table_max_sum < 1) return e_ok;
+
+    // Carry-rippler submask iteration through all 2^N - 1 non-empty sub-bitboards
+    for(uint64_t sub = table_bb; sub > 0; sub = (sub - 1) & table_bb){
+        uint8_t picked[16];
+        uint8_t n = 0;
+        uint64_t temp = sub;
+        while(temp > 0){
+            picked[n++] = (uint8_t)__builtin_ctzll(temp);
+            temp &= (temp - 1);
+        }
+
+        bool valid = false;
+        if(ace){
+            valid = (is_exact_partition(picked, n, 11) || is_exact_partition(picked, n, 1));
+        } else {
+            valid = is_exact_partition(picked, n, target_v);
+        }
+
+        if(valid){
+            err = bitboard_push_move(moves, card, sub);
+            if(err != e_ok) return err;
+        }
+    }
+
+    return e_ok;
+}
+
+t_cteerr bitboard_gen_all_moves_dynamic(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand){
+    if(!moves || !hand) return e_null;
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, 32);
+        if(err != e_ok) return err;
+    }
+
+    for(uint8_t i = 0; i < hand->size; i++){
+        t_cteerr err = bitboard_gen_card_moves_dynamic(moves, table_bb, hand->array[i]);
+        if(err != e_ok) return err;
+    }
+    return e_ok;
+}
+
+// -------------------------------------------------------------
+// 2. Optimized 1D Pivot Inverted Index Bitboard Engine (225 KB RAM)
+// -------------------------------------------------------------
+static uint8_t collect_active_base_masks(uint64_t table_bb, uint8_t target_val, uint64_t *out_masks, uint8_t max_out){
+    if(target_val == 0 || target_val > 14) return 0;
+
+    // 1. Fast Reachability Rejection in 1 cycle
+    if((table_bb & g_reachability_mask[target_val]) == 0) return 0;
+
+    uint8_t found = 0;
+    uint64_t temp = table_bb;
+
+    // 2. Lookup only the pivot buckets for cards currently on the table
+    while(temp > 0){
+        uint8_t c = (uint8_t)__builtin_ctzll(temp);
+        uint16_t idx = CTE_PIVOT_INDEX(c, target_val);
+        uint16_t count = g_pivot_counts[idx];
+        const uint64_t *masks = &g_pivot_subset_masks[g_pivot_offsets[idx]];
+
+        // 4-Way Loop Unrolling for ILP & Compiler Vectorization
+        uint16_t i = 0;
+        for(; i + 3 < count; i += 4){
+            uint64_t m0 = masks[i + 0];
+            uint64_t m1 = masks[i + 1];
+            uint64_t m2 = masks[i + 2];
+            uint64_t m3 = masks[i + 3];
+            if((table_bb & m0) == m0 && found < max_out) out_masks[found++] = m0;
+            if((table_bb & m1) == m1 && found < max_out) out_masks[found++] = m1;
+            if((table_bb & m2) == m2 && found < max_out) out_masks[found++] = m2;
+            if((table_bb & m3) == m3 && found < max_out) out_masks[found++] = m3;
+        }
+        for(; i < count; i++){
+            uint64_t m = masks[i];
+            if((table_bb & m) == m && found < max_out) out_masks[found++] = m;
+        }
+
+        temp &= (temp - 1); // BMI2 BLSR
+    }
+    return found;
+}
+
+// Combine disjoint base masks into multi-capture unions (with deduplication)
+static void combine_disjoint_masks(uint64_t current_union,
+                                  uint8_t start_idx,
+                                  uint8_t num_active,
+                                  const uint64_t *active_masks,
+                                  uint64_t *out_captures,
+                                  uint16_t *out_count,
+                                  uint16_t max_captures)
+{
+    for(uint8_t i = start_idx; i < num_active; i++){
+        uint64_t next_mask = active_masks[i];
+        if((current_union & next_mask) == 0){
+            uint64_t new_union = current_union | next_mask;
+
+            bool exists = false;
+            for(uint16_t k = 0; k < *out_count; k++){
+                if(out_captures[k] == new_union){
+                    exists = true;
+                    break;
+                }
+            }
+            if(!exists && *out_count < max_captures){
+                out_captures[(*out_count)++] = new_union;
+            }
+            combine_disjoint_masks(new_union, (uint8_t)(i + 1), num_active, active_masks, out_captures, out_count, max_captures);
+        }
+    }
+}
+
+t_cteerr bitboard_gen_card_moves_table(struct s_cte_move_list *moves, uint64_t table_bb, t_card card){
+    if(!moves) return e_null;
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, 16);
+        if(err != e_ok) return err;
+    }
+
+    t_cteerr err = bitboard_push_move(moves, card, 0);
+    if(err != e_ok) return err;
+
+    if(table_bb == 0) return e_ok;
+
+    bool ace = is_ace(card);
+    uint8_t val = ace ? 11 : get_value(card);
+
+    // Sum-bound pruning
+    uint16_t table_max_sum = compute_table_max_sum(table_bb);
+    if(!ace && table_max_sum < val) return e_ok;
+    if(ace && table_max_sum < 1) return e_ok;
+
+    uint64_t active_masks[64];
+    uint64_t capture_masks[256];
+    uint16_t capture_count = 0;
+
+    if(ace){
+        if(table_max_sum >= 11){
+            uint8_t n11 = collect_active_base_masks(table_bb, 11, active_masks, 64);
+            if(n11 > 0){
+                combine_disjoint_masks(0, 0, n11, active_masks, capture_masks, &capture_count, 256);
+            }
+        }
+
+        uint64_t active_masks_1[64];
+        uint8_t n1 = collect_active_base_masks(table_bb, 1, active_masks_1, 64);
+        if(n1 > 0){
+            combine_disjoint_masks(0, 0, n1, active_masks_1, capture_masks, &capture_count, 256);
+        }
+    } else {
+        uint8_t n = collect_active_base_masks(table_bb, val, active_masks, 64);
+        if(n > 0){
+            combine_disjoint_masks(0, 0, n, active_masks, capture_masks, &capture_count, 256);
+        }
+    }
+
+    for(uint16_t i = 0; i < capture_count; i++){
+        err = bitboard_push_move(moves, card, capture_masks[i]);
+        if(err != e_ok) return err;
+    }
+
+    return e_ok;
+}
+
+t_cteerr bitboard_gen_all_moves_table(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand){
+    if(!moves || !hand) return e_null;
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, 32);
+        if(err != e_ok) return err;
+    }
+
+    s_cte_bitboard_move_list cpt;
+    bitboard_gen_all_compact_moves_table(&cpt, table_bb, hand);
+
+    for(uint16_t i = 0; i < cpt.size; i++){
+        t_cteerr err = bitboard_push_move(moves, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
+        if(err != e_ok) return err;
+    }
+    return e_ok;
+}
+
+void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, uint64_t table_bb, const struct s_cte_hand *hand){
+    if(!out_list || !hand) return;
+    out_list->size = 0;
+    if(hand->size == 0) return;
+
+    // 1. Always emit drop moves for all cards in hand
+    for(uint8_t h = 0; h < hand->size; h++){
+        if(out_list->size < 1024){
+            out_list->moves[out_list->size++] = (s_cte_bitboard_move){ hand->array[h], 0 };
+        }
+    }
+
+    if(table_bb == 0) return;
+
+    // 2. Global Hand Reachability Fast Rejection (1 cycle CPU)
+    uint16_t val_mask = 0;
+    uint64_t global_reach = 0;
+    for(uint8_t h = 0; h < hand->size; h++){
+        t_card c = hand->array[h];
+        if(is_ace(c)){
+            val_mask |= (1u << 1) | (1u << 11);
+            global_reach |= (g_reachability_mask[1] | g_reachability_mask[11]);
+        } else {
+            uint8_t v = get_value(c);
+            val_mask |= (1u << v);
+            global_reach |= g_reachability_mask[v];
+        }
+    }
+
+    if((table_bb & global_reach) == 0) return;
+
+    // 3. Collect active base masks in 1 SINGLE pass over table_bb
+    uint64_t active_by_val[15][64];
+    uint8_t  active_count[15] = {0};
+
+    uint64_t temp = table_bb;
+    while(temp > 0){
+        uint8_t c = (uint8_t)__builtin_ctzll(temp);
+
+        uint16_t v_temp = val_mask;
+        while(v_temp > 0){
+            uint8_t v = (uint8_t)__builtin_ctz(v_temp);
+            v_temp &= (v_temp - 1);
+
+            uint16_t idx = CTE_PIVOT_INDEX(c, v);
+            uint16_t count = g_pivot_counts[idx];
+            const uint64_t *masks = &g_pivot_subset_masks[g_pivot_offsets[idx]];
+
+            uint16_t i = 0;
+            for(; i + 3 < count; i += 4){
+                uint64_t m0 = masks[i + 0];
+                uint64_t m1 = masks[i + 1];
+                uint64_t m2 = masks[i + 2];
+                uint64_t m3 = masks[i + 3];
+                if((table_bb & m0) == m0 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m0;
+                if((table_bb & m1) == m1 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m1;
+                if((table_bb & m2) == m2 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m2;
+                if((table_bb & m3) == m3 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m3;
+            }
+            for(; i < count; i++){
+                uint64_t m = masks[i];
+                if((table_bb & m) == m && active_count[v] < 64) active_by_val[v][active_count[v]++] = m;
+            }
+        }
+        temp &= (temp - 1); // BMI2 BLSR
+    }
+
+    // 4. Precompute disjoint combinations for each unique value
+    uint64_t cap_by_val[15][256];
+    uint16_t cap_count[15] = {0};
+    bool     cap_computed[15] = {0};
+
+    for(uint8_t h = 0; h < hand->size; h++){
+        t_card card = hand->array[h];
+        bool ace = is_ace(card);
+
+        if(ace){
+            if(!cap_computed[11]){
+                if(active_count[11] > 0){
+                    combine_disjoint_masks(0, 0, active_count[11], active_by_val[11], cap_by_val[11], &cap_count[11], 256);
+                }
+                cap_computed[11] = true;
+            }
+            for(uint16_t k = 0; k < cap_count[11]; k++){
+                if(out_list->size < 1024){
+                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_val[11][k] };
+                }
+            }
+
+            // Ace as 1 (only add masks not already added by Ace as 11)
+            if(!cap_computed[1]){
+                if(active_count[1] > 0){
+                    combine_disjoint_masks(0, 0, active_count[1], active_by_val[1], cap_by_val[1], &cap_count[1], 256);
+                }
+                cap_computed[1] = true;
+            }
+            for(uint16_t k = 0; k < cap_count[1]; k++){
+                uint64_t m1 = cap_by_val[1][k];
+                bool already = false;
+                for(uint16_t j = 0; j < cap_count[11]; j++){
+                    if(cap_by_val[11][j] == m1){
+                        already = true;
+                        break;
+                    }
+                }
+                if(!already && out_list->size < 1024){
+                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, m1 };
+                }
+            }
+        } else {
+            uint8_t v = get_value(card);
+            if(!cap_computed[v]){
+                if(active_count[v] > 0){
+                    combine_disjoint_masks(0, 0, active_count[v], active_by_val[v], cap_by_val[v], &cap_count[v], 256);
+                }
+                cap_computed[v] = true;
+            }
+            for(uint16_t k = 0; k < cap_count[v]; k++){
+                if(out_list->size < 1024){
+                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_val[v][k] };
+                }
+            }
+        }
+    }
+}
+
+static t_cteerr bitboard_adapter_gen_card_moves_dyn(struct s_cte_move_list *moves, const struct table *table, t_card card){
+    if(!moves) return e_null;
+    uint64_t table_bb = 0;
+    if(table){
+        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
+            t_card c = table->cards_on_table[i];
+            if(c < 52) table_bb |= (1ULL << c);
+        }
+    }
+    return bitboard_gen_card_moves_dynamic(moves, table_bb, card);
+}
+
+static t_cteerr bitboard_adapter_gen_all_moves_dyn(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
+    if(!moves || !hand) return e_null;
+    uint64_t table_bb = 0;
+    if(table){
+        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
+            t_card c = table->cards_on_table[i];
+            if(c < 52) table_bb |= (1ULL << c);
+        }
+    }
+    return bitboard_gen_all_moves_dynamic(moves, table_bb, hand);
+}
+
+static t_cteerr bitboard_adapter_gen_card_moves_tbl(struct s_cte_move_list *moves, const struct table *table, t_card card){
+    if(!moves) return e_null;
+    uint64_t table_bb = 0;
+    if(table){
+        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
+            t_card c = table->cards_on_table[i];
+            if(c < 52) table_bb |= (1ULL << c);
+        }
+    }
+    return bitboard_gen_card_moves_table(moves, table_bb, card);
+}
+
+static t_cteerr bitboard_adapter_gen_all_moves_tbl(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
+    if(!moves || !hand) return e_null;
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, 32);
+        if(err != e_ok) return err;
+    }
+
+    uint64_t table_bb = 0;
+    if(table){
+        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
+            t_card c = table->cards_on_table[i];
+            if(c < 52) table_bb |= (1ULL << c);
+        }
+    }
+
+    s_cte_bitboard_move_list cpt;
+    bitboard_gen_all_compact_moves_table(&cpt, table_bb, hand);
+
+    for(uint16_t i = 0; i < cpt.size; i++){
+        t_cteerr err = bitboard_push_move(moves, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
+        if(err != e_ok) return err;
+    }
+    return e_ok;
+}
+
+static s_cte_pos bitboard_adapter_to_pos(const s_cte_game *game){
+    if(!game){
+        s_cte_pos empty = {0};
+        return empty;
+    }
+    s_cte_game_state st = {
+        .table = &game->table,
+        .players = &game->players,
+        .deck = &game->deck,
+        .current_player_id = game->current_player_id,
+    };
+    return pos_from_state(&st);
+}
+
+const s_cte_engine_backend g_backend_bitboard = {
+    .type            = CTE_BACKEND_BITBOARD,
+    .name            = "Bitboard Dynamic (Carry-Rippler, 0 KB RAM)",
+    .init_game       = init_game,
+    .free_game       = free_game,
+    .setup_round     = setup_round,
+    .deal_next_hand  = deal_next_hand,
+    .award_remaining = award_remaining_table_cards,
+    .run_round       = run_round,
+    .is_legal        = is_legal,
+    .gen_card_moves  = bitboard_adapter_gen_card_moves_dyn,
+    .gen_all_moves   = bitboard_adapter_gen_all_moves_dyn,
+    .play_move       = play_move,
+    .score_move      = score_move,
+    .to_pos          = bitboard_adapter_to_pos,
+};
+
+const s_cte_engine_backend g_backend_bitboard_table = {
+    .type            = CTE_BACKEND_BITBOARD_TABLE,
+    .name            = "Bitboard 1D Pivot Tables (225 KB RAM)",
+    .init_game       = init_game,
+    .free_game       = free_game,
+    .setup_round     = setup_round,
+    .deal_next_hand  = deal_next_hand,
+    .award_remaining = award_remaining_table_cards,
+    .run_round       = run_round,
+    .is_legal        = is_legal,
+    .gen_card_moves  = bitboard_adapter_gen_card_moves_tbl,
+    .gen_all_moves   = bitboard_adapter_gen_all_moves_tbl,
+    .play_move       = play_move,
+    .score_move      = score_move,
+    .to_pos          = bitboard_adapter_to_pos,
+};

@@ -1,5 +1,6 @@
 #include "card.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 // Point values of each card in the game
 uint8_t __tab_points[52] = {
@@ -13,10 +14,6 @@ uint8_t __tab_points[52] = {
 uint8_t values[13] = {
     2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 };
-
-// Global game state structures
-struct deck deck;
-struct table table;
 
 static const char * const value_str[] = {
     "2", "3", "4", "5", "6", "7", "8", "9", "10", "ACE", "JACK", "QUEEN", "KING"
@@ -37,6 +34,24 @@ static const char * const suit_unicode_str[] = {
 static const char * const suit_ascii_str[] = {
     "C", "D", "H", "S"
 };
+
+void init_deck(struct deck *d){
+    if(!d) return;
+    d->cur_card = 0;
+    for(uint8_t i = 0; i < 52; i++){
+        d->cards[i] = i;
+    }
+}
+
+void shuffle_deck(struct deck *d){
+    if(!d) return;
+    for(uint8_t i = 0; i < 52; i++){
+        uint8_t j = (uint8_t)(rand() % 52);
+        t_card tmp = d->cards[i];
+        d->cards[i] = d->cards[j];
+        d->cards[j] = tmp;
+    }
+}
 
 void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style style){
     if(!buf || buf_size == 0) return;
@@ -60,10 +75,11 @@ void print_card(uint8_t card){
     printf("%s of %s\n", value_str[value-2], color_str[color]);
 }
 
-void print_table(void){
-    printf("Cards on table : \n");
-    for(uint8_t i = 0 ; i < table.nb_cards_on_table; i++){
-        uint8_t card = table.cards_on_table[i];
+void print_table(const struct table *tbl){
+    if(!tbl) return;
+    printf("Cards on table (%u): \n", (unsigned)tbl->nb_cards_on_table);
+    for(uint8_t i = 0 ; i < tbl->nb_cards_on_table; i++){
+        uint8_t card = tbl->cards_on_table[i];
         uint8_t value = get_value(card);
         uint8_t color = get_color(card);
         printf("%s of %s\n", value_str[value-2], color_str[color]);

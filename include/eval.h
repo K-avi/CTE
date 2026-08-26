@@ -22,6 +22,7 @@ typedef enum {
 typedef struct s_cte_game_state {
     const struct table         *table;
     const struct s_cte_players *players;
+    const struct deck          *deck;
     uint8_t                     current_player_id;
 } s_cte_game_state;
 

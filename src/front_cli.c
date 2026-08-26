@@ -21,7 +21,7 @@ static void cli_on_turn_start(const s_cte_game_state *state, const struct s_cte_
     e_cte_render_style style = ctx ? ctx->style : CTE_RENDER_UNICODE;
 
     printf("\n=======================================================\n");
-    printf(" [Round Status] (Deck: %u cards left)\n", (unsigned)(52 - deck.cur_card));
+    printf(" [Round Status] (Deck: %u cards left)\n", (unsigned)(state->deck ? (52 - state->deck->cur_card) : 0));
     for(uint8_t p = 0; p < state->players->size; p++){
         const struct s_cte_player_data *pl = &state->players->players[p];
         uint8_t pts = 0;
@@ -108,26 +108,26 @@ static void cli_on_round_end(const struct s_cte_players *players, const s_cte_ro
 static void cli_on_match_end(const struct s_cte_match *match, int8_t winner_id, void *ui_ctx){
     (void)ui_ctx;
     printf("\n=======================================================\n");
-    if(match->is_team_mode && match->players->size == 4){
+    if(match->is_team_mode && match->game && match->game->players.size == 4){
         if(winner_id == 0){
             printf("  MATCH OVER! Winner: Team 1 (%s & %s) with %u points! (Rounds played: %u)\n",
-                   match->players->players[0].player_name,
-                   match->players->players[2].player_name,
+                   match->game->players.players[0].player_name,
+                   match->game->players.players[2].player_name,
                    (unsigned)match->match_scores[0],
                    (unsigned)match->round_nb);
         } else if(winner_id == 1){
             printf("  MATCH OVER! Winner: Team 2 (%s & %s) with %u points! (Rounds played: %u)\n",
-                   match->players->players[1].player_name,
-                   match->players->players[3].player_name,
+                   match->game->players.players[1].player_name,
+                   match->game->players.players[3].player_name,
                    (unsigned)match->match_scores[1],
                    (unsigned)match->round_nb);
         } else {
             printf("  MATCH OVER in a Draw! (Rounds played: %u)\n", (unsigned)match->round_nb);
         }
-    } else {
-        if(winner_id >= 0 && winner_id < (int8_t)match->players->size){
+    } else if(match->game) {
+        if(winner_id >= 0 && winner_id < (int8_t)match->game->players.size){
             printf("  MATCH OVER! Winner: %s with %u points! (Rounds played: %u)\n",
-                   match->players->players[winner_id].player_name,
+                   match->game->players.players[winner_id].player_name,
                    (unsigned)match->match_scores[winner_id],
                    (unsigned)match->round_nb);
         } else {
@@ -146,21 +146,18 @@ uint16_t cli_read_human_move(const s_cte_game_state *state,
     if(!moves || moves->size == 0) return 0;
 
     for(;;){
-        printf(" Select move [0-%u]: ", (unsigned)(moves->size - 1));
-        fflush(stdout);
-
-        char input_buf[64];
-        if(!fgets(input_buf, sizeof(input_buf), stdin)){
-            printf("\n");
-            return 0;
+        printf(" Enter move number (0 to %u): ", (unsigned)(moves->size - 1));
+        char line[64];
+        if(!fgets(line, sizeof(line), stdin)){
+            return 0; // EOF fallback
         }
 
         char *endptr = NULL;
-        long val = strtol(input_buf, &endptr, 10);
-        if(endptr != input_buf && val >= 0 && val < (long)moves->size){
+        long val = strtol(line, &endptr, 10);
+        if(endptr != line && val >= 0 && val < (long)moves->size){
             return (uint16_t)val;
         }
-        printf(" Invalid input. Please enter a valid number between 0 and %u.\n", (unsigned)(moves->size - 1));
+        printf(" [!] Invalid move number. Please choose between 0 and %u.\n", (unsigned)(moves->size - 1));
     }
 }
 
@@ -197,7 +194,6 @@ int run_cli_frontend(const s_cte_cli_config *config){
     uint8_t nb_p = config->nb_players;
     if(nb_p < 2 || nb_p > 4) nb_p = 2;
 
-    struct s_cte_players players;
     char names_buf[4][64];
     char *names[4];
 
@@ -242,22 +238,23 @@ int run_cli_frontend(const s_cte_cli_config *config){
         }
     }
 
-    t_cteerr err = init_players(&players, nb_p, names);
+    s_cte_game game;
+    t_cteerr err = init_game(&game, nb_p, names, config->is_team_mode);
     if(err != e_ok){
-        fprintf(stderr, "Error: Failed to initialize players (code: %u)\n", err);
+        fprintf(stderr, "Error: Failed to initialize game (code: %u)\n", err);
         return 1;
     }
 
     for(uint8_t i = 0; i < nb_p; i++){
-        players.players[i].is_human = slot_is_human[i];
-        players.players[i].evaluator = slot_evaluators[i];
+        game.players.players[i].is_human = slot_is_human[i];
+        game.players.players[i].evaluator = slot_evaluators[i];
     }
 
     struct s_cte_match match;
-    err = init_match(&match, &players, config->winning_score);
+    err = init_match(&match, &game, config->winning_score);
     if(err != e_ok){
         fprintf(stderr, "Error: Failed to initialize match (code: %u)\n", err);
-        free_players(&players);
+        free_game(&game);
         return 1;
     }
     match.max_rounds = config->max_rounds;
@@ -288,16 +285,15 @@ int run_cli_frontend(const s_cte_cli_config *config){
     for(uint8_t i = 0; i < nb_p; i++){
         printf(" Player %u     : %s\n", (unsigned)(i+1), names[i]);
     }
-    printf(" Render Style : %s\n", (config->style == CTE_RENDER_UNICODE) ? "Unicode" : "ASCII");
-    printf("=======================================================\n");
+    printf("=======================================================\n\n");
 
     err = run_match(&match, &round_config);
     if(err != e_ok){
         fprintf(stderr, "Error during match execution (code: %u)\n", err);
-        free_players(&players);
+        free_game(&game);
         return 1;
     }
 
-    free_players(&players);
+    free_game(&game);
     return 0;
 }

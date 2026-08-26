@@ -40,16 +40,16 @@ extern uint8_t values[13];
 
 #define DECKSIZE 52
 
-// Global game components
-extern struct deck {
+// Reentrant deck and table structures
+struct deck {
     uint8_t cur_card;
     t_card cards[52];
-} deck;
+};
 
-extern struct table {
+struct table {
     uint8_t nb_cards_on_table;
     t_card cards_on_table[52];
-} table;
+};
 
 // Card render styles
 typedef enum {
@@ -57,9 +57,13 @@ typedef enum {
     CTE_RENDER_ASCII   = 1
 } e_cte_render_style;
 
+// Deck management
+void init_deck(struct deck *d);
+void shuffle_deck(struct deck *d);
+
 // Formatting and printing functions
 void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style style);
 void print_card(uint8_t card);
-void print_table(void);
+void print_table(const struct table *tbl);
 
 #endif

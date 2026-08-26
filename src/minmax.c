@@ -106,10 +106,10 @@ s_cte_pos pos_apply_move(const s_cte_pos *pos, const struct s_cte_move *move){
 t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
     if(!moves || !pos) return e_null;
 
-    struct table old_tbl = table;
-    table.nb_cards_on_table = pos->table_count;
+    struct table tbl;
+    tbl.nb_cards_on_table = pos->table_count;
     for(uint8_t i = 0; i < pos->table_count; i++){
-        table.cards_on_table[i] = pos->table[i];
+        tbl.cards_on_table[i] = pos->table[i];
     }
 
     struct s_cte_hand cur_hand;
@@ -118,10 +118,7 @@ t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
         cur_hand.array[i] = pos->hands[pos->current_player][i];
     }
 
-    t_cteerr err = gen_all_moves(moves, &cur_hand);
-
-    table = old_tbl;
-    return err;
+    return gen_all_moves(moves, &tbl, &cur_hand);
 }
 
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){

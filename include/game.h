@@ -6,6 +6,16 @@
 #include "move.h"
 #include "eval.h"
 
+// Reentrant game structure containing all state
+typedef struct s_cte_game {
+    struct deck          deck;               // Sabot de 52 cartes
+    struct table         table;              // Table active (0..52 cartes)
+    struct s_cte_players players;            // Joueurs, mains et cartes remportées
+    int8_t               last_captor_id;     // Dernier joueur ayant fait une prise (-1 si aucun)
+    uint8_t              current_player_id;  // Joueur actif (0..players.size-1)
+    bool                 is_team_mode;       // Mode 2v2 par équipes (4 joueurs)
+} s_cte_game;
+
 // Round score summary for a player
 typedef struct {
     uint8_t card_points;     // Points from captured cards
@@ -16,12 +26,12 @@ typedef struct {
 
 // Match management structure
 struct s_cte_match {
-    struct s_cte_players *players;
-    uint16_t match_scores[4]; // Cumulative score per player (or per team in team mode)
-    uint16_t winning_score;   // Configurable (e.g. 51, 101, 201)
-    uint8_t  round_nb;        // Current round index (0-indexed)
-    uint8_t  max_rounds;      // Optional round limit (0 = unlimited / by score)
-    bool     is_team_mode;    // True for 4-player 2v2 team mode
+    s_cte_game *game;                 // Reference to reentrant game state
+    uint16_t    match_scores[4];      // Cumulative score per player (or per team)
+    uint16_t    winning_score;        // Configurable (e.g. 51, 101, 201)
+    uint8_t     round_nb;             // Current round index (0-indexed)
+    uint8_t     max_rounds;           // Optional round limit (0 = unlimited)
+    bool        is_team_mode;         // True for 4-player 2v2 team mode
 };
 
 // UI Event Observer Callbacks
@@ -34,15 +44,17 @@ typedef struct s_cte_ui_callbacks {
     void (*on_match_end)(const struct s_cte_match *match, int8_t winner_id, void *ui_ctx);
 } s_cte_ui_callbacks;
 
-// Game dealing & lifecycle
-t_cteerr setup_game(struct s_cte_players *players);
-t_cteerr deal_next_hand(struct s_cte_players *players);
-t_cteerr award_remaining_table_cards(struct s_cte_players *players, uint8_t last_captor_id);
-t_cteerr run_round(struct s_cte_players *players, const s_cte_round_config *config);
+// Game lifecycle & dealing
+t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_team_mode);
+void     free_game(s_cte_game *game);
+t_cteerr setup_round(s_cte_game *game);
+t_cteerr deal_next_hand(s_cte_game *game);
+t_cteerr award_remaining_table_cards(s_cte_game *game);
+t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config);
 
 // Scoring & match execution
 t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[], bool is_team_mode);
-t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, uint16_t winning_score);
+t_cteerr init_match(struct s_cte_match *match, s_cte_game *game, uint16_t winning_score);
 bool     match_is_over(const struct s_cte_match *match);
 int8_t   match_winner(const struct s_cte_match *match);
 t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config);

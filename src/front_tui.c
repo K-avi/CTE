@@ -78,7 +78,7 @@ static void render_tui_board(const s_cte_game_state *state,
     for(int x = 0; x < max_x; x++) mvaddch(0, x, ' ');
     mvprintw(0, 2, " CTE - TABLIC TUI ");
     mvprintw(0, 22, "| Round: %u", (unsigned)(ctx ? ctx->cur_round : 1));
-    mvprintw(0, 36, "| Deck: %2u cards left", (unsigned)(52 - deck.cur_card));
+    mvprintw(0, 36, "| Deck: %2u cards left", (unsigned)(state->deck ? (52 - state->deck->cur_card) : 0));
     mvprintw(0, 62, "| Mode: %u Players%s",
              state->players->size,
              state->players->size == 4 && ctx && ctx->is_team_mode ? " (2v2)" : "");
@@ -302,26 +302,26 @@ static void tui_on_match_end(const struct s_cte_match *match, int8_t winner_id, 
     mvprintw(2, 4, " ================= MATCH FINISHED ================= ");
     attroff(COLOR_PAIR(PAIR_HEADER) | A_BOLD);
 
-    if(match->is_team_mode && match->players->size == 4){
+    if(match->is_team_mode && match->game && match->game->players.size == 4){
         if(winner_id == 0){
             mvprintw(5, 6, "WINNER: Team 1 (%s & %s) with %u points! (Rounds: %u)",
-                     match->players->players[0].player_name,
-                     match->players->players[2].player_name,
+                     match->game->players.players[0].player_name,
+                     match->game->players.players[2].player_name,
                      (unsigned)match->match_scores[0],
                      (unsigned)match->round_nb);
         } else if(winner_id == 1){
             mvprintw(5, 6, "WINNER: Team 2 (%s & %s) with %u points! (Rounds: %u)",
-                     match->players->players[1].player_name,
-                     match->players->players[3].player_name,
+                     match->game->players.players[1].player_name,
+                     match->game->players.players[3].player_name,
                      (unsigned)match->match_scores[1],
                      (unsigned)match->round_nb);
         } else {
             mvprintw(5, 6, "Match finished in a DRAW! (Rounds: %u)", (unsigned)match->round_nb);
         }
-    } else {
-        if(winner_id >= 0 && winner_id < (int8_t)match->players->size){
+    } else if(match->game) {
+        if(winner_id >= 0 && winner_id < (int8_t)match->game->players.size){
             mvprintw(5, 6, "WINNER: %s with %u points! (Rounds: %u)",
-                     match->players->players[winner_id].player_name,
+                     match->game->players.players[winner_id].player_name,
                      (unsigned)match->match_scores[winner_id],
                      (unsigned)match->round_nb);
         } else {
@@ -370,7 +370,6 @@ int run_tui_frontend(const s_cte_tui_config *config){
     uint8_t nb_p = config->nb_players;
     if(nb_p < 2 || nb_p > 4) nb_p = 2;
 
-    struct s_cte_players players;
     char names_buf[4][64];
     char *names[4];
 
@@ -424,23 +423,24 @@ int run_tui_frontend(const s_cte_tui_config *config){
         }
     }
 
-    t_cteerr err = init_players(&players, nb_p, names);
+    s_cte_game game;
+    t_cteerr err = init_game(&game, nb_p, names, config->is_team_mode);
     if(err != e_ok){
-        fprintf(stderr, "Error: Failed to initialize players (code: %u)\n", err);
+        fprintf(stderr, "Error: Failed to initialize game (code: %u)\n", err);
         return 1;
     }
 
     for(uint8_t i = 0; i < nb_p; i++){
-        players.players[i].is_human = slot_is_human[i];
-        players.players[i].evaluator = slot_evaluators[i];
-        players.players[i].eval_context = &ui_ctx;
+        game.players.players[i].is_human = slot_is_human[i];
+        game.players.players[i].evaluator = slot_evaluators[i];
+        game.players.players[i].eval_context = &ui_ctx;
     }
 
     struct s_cte_match match;
-    err = init_match(&match, &players, config->winning_score);
+    err = init_match(&match, &game, config->winning_score);
     if(err != e_ok){
         fprintf(stderr, "Error: Failed to initialize match (code: %u)\n", err);
-        free_players(&players);
+        free_game(&game);
         return 1;
     }
     match.max_rounds = config->max_rounds;
@@ -471,10 +471,10 @@ int run_tui_frontend(const s_cte_tui_config *config){
 
     if(err != e_ok){
         fprintf(stderr, "Error during TUI match execution (code: %u)\n", err);
-        free_players(&players);
+        free_game(&game);
         return 1;
     }
 
-    free_players(&players);
+    free_game(&game);
     return 0;
 }

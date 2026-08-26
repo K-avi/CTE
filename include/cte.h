@@ -10,5 +10,6 @@
 #include "game.h"
 #include "front_cli.h"
 #include "front_tui.h"
+#include "engine.h"
 
 #endif

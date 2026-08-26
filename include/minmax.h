@@ -1,7 +1,10 @@
 #ifndef __CTE_MINMAX_H
 #define __CTE_MINMAX_H
 
-#include "cte.h"
+#include "card.h"
+#include "player.h"
+#include "move.h"
+#include "eval.h"
 
 // Compact game snapshot (fits in a 64-byte L1 cache line)
 typedef struct {
