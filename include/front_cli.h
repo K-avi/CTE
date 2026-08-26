@@ -3,18 +3,6 @@
 
 #include "cte.h"
 
-typedef enum {
-    GAME_HUMAN_VS_AI,
-    GAME_HUMAN_VS_HUMAN,
-    GAME_AI_VS_AI
-} e_cli_game_type;
-
-typedef enum {
-    AI_TYPE_RANDOM,
-    AI_TYPE_DUMB,
-    AI_TYPE_GREEDY,
-    AI_TYPE_CHEATER
-} e_cli_ai_type;
 
 typedef struct {
     uint8_t            nb_players;    // 2, 3, or 4 (default: 2)

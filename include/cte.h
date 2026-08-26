@@ -9,5 +9,6 @@
 #include "minmax.h"
 #include "game.h"
 #include "front_cli.h"
+#include "front_tui.h"
 
 #endif

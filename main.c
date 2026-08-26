@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include <getopt.h>
+#include <locale.h>
 
 typedef enum {
     UI_MODE_CLI,
@@ -43,6 +44,7 @@ static bool parse_ai_strategy(const char *token, e_cli_ai_type *type_out){
 }
 
 int main(int argc, char **argv){
+    setlocale(LC_ALL, "");
     e_ui_mode mode = UI_MODE_CLI;
     s_cte_cli_config cli_config = {
         .nb_players    = 2,
@@ -194,10 +196,19 @@ int main(int argc, char **argv){
     switch(mode){
         case UI_MODE_CLI:
             return run_cli_frontend(&cli_config);
-        case UI_MODE_TUI:
-            printf("[Info] TUI mode (ncurses) is scheduled in the roadmap and will be available in an upcoming release.\n");
-            printf("[Info] Falling back to interactive CLI mode.\n\n");
-            return run_cli_frontend(&cli_config);
+        case UI_MODE_TUI: {
+            s_cte_tui_config tui_config = {
+                .nb_players    = cli_config.nb_players,
+                .is_team_mode  = cli_config.is_team_mode,
+                .game_type     = cli_config.game_type,
+                .nb_ai_types   = cli_config.nb_ai_types,
+                .style         = cli_config.style,
+                .winning_score = cli_config.winning_score,
+                .max_rounds    = cli_config.max_rounds,
+            };
+            for(int i = 0; i < 4; i++) tui_config.ai_types[i] = cli_config.ai_types[i];
+            return run_tui_frontend(&tui_config);
+        }
         case UI_MODE_GUI:
             printf("[Info] GUI mode is scheduled in the roadmap and will be available in an upcoming release.\n");
             printf("[Info] Falling back to interactive CLI mode.\n\n");

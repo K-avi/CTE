@@ -11,7 +11,7 @@ s_cte_pos pos_from_state(const s_cte_game_state *state){
     memset(&res, 0, sizeof(res));
     if(!state) return res;
 
-    res.table_count = (state->table->nb_cards_on_table < 16) ? state->table->nb_cards_on_table : 16;
+    res.table_count = (state->table->nb_cards_on_table < 20) ? state->table->nb_cards_on_table : 20;
     for(uint8_t i = 0; i < res.table_count; i++){
         res.table[i] = state->table->cards_on_table[i];
     }

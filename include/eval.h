@@ -5,6 +5,19 @@
 #include "player.h"
 #include "move.h"
 
+typedef enum {
+    GAME_HUMAN_VS_AI,
+    GAME_HUMAN_VS_HUMAN,
+    GAME_AI_VS_AI
+} e_cli_game_type;
+
+typedef enum {
+    AI_TYPE_RANDOM,
+    AI_TYPE_DUMB,
+    AI_TYPE_GREEDY,
+    AI_TYPE_CHEATER
+} e_cli_ai_type;
+
 // Snapshot of game state passed to evaluators
 typedef struct s_cte_game_state {
     const struct table         *table;

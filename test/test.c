@@ -1217,6 +1217,208 @@ int main(){
     assert(err == e_ok);
     assert(sc_cheat[0].total >= sc_cheat[1].total);
 
+    // 4. Fuzzing multiseed Cheater vs Greedy (10 seeds)
+    for(unsigned int s = 100; s < 110; s++){
+        reset_all_players(&players_ai);
+        players_ai.players[0].evaluator = eval_cheater;
+        players_ai.players[1].evaluator = eval_greedy;
+        config_ai.evaluators[0] = eval_cheater;
+        config_ai.evaluators[1] = eval_greedy;
+
+        srand(s);
+        err = run_round(&players_ai, &config_ai);
+        assert(err == e_ok);
+        assert(deck.cur_card == 52);
+        assert(table.nb_cards_on_table == 0);
+        assert(players_ai.players[0].won_cards.size + players_ai.players[1].won_cards.size == 52);
+    }
+
+    // ---- T21 : Invariant de Conservation Absolue des 22 Points de Cartes ----
+    for(unsigned int s = 200; s < 250; s++){
+        reset_all_players(&players_ai);
+        players_ai.players[0].evaluator = eval_greedy;
+        players_ai.players[1].evaluator = eval_cheater;
+        config_ai.evaluators[0] = eval_greedy;
+        config_ai.evaluators[1] = eval_cheater;
+
+        srand(s);
+        err = run_round(&players_ai, &config_ai);
+        assert(err == e_ok);
+        assert(players_ai.players[0].won_cards.size + players_ai.players[1].won_cards.size == 52);
+
+        uint8_t total_card_pts = 0;
+        for(uint8_t p = 0; p < players_ai.size; p++){
+            for(uint8_t c = 0; c < players_ai.players[p].won_cards.size; c++){
+                total_card_pts += get_points(players_ai.players[p].won_cards.array[c]);
+            }
+        }
+        assert(total_card_pts == 22);
+    }
+
+    // ---- T22 : Cas Limites de Partitionnement Exact (Prise triple & Rejet strict) ----
+    // 1. Prise triple : Table = { Dame (11), As (9), 8 (6), 6 (4), 9 (7), 5 (3) }
+    // Carte jouée = Roi (12, val 14). (13+1=14, 8+6=14, 9+5=14)
+    table.nb_cards_on_table = 6;
+    table.cards_on_table[0] = 11; // Dame de trèfle (val 13)
+    table.cards_on_table[1] = 9;  // As de trèfle (val 1 / 11)
+    table.cards_on_table[2] = 6;  // 8 de trèfle (val 8)
+    table.cards_on_table[3] = 4;  // 6 de trèfle (val 6)
+    table.cards_on_table[4] = 7;  // 9 de trèfle (val 9)
+    table.cards_on_table[5] = 3;  // 5 de trèfle (val 5)
+
+    uint8_t triple_arr[6] = { 11, 9, 6, 4, 7, 3 };
+    struct s_cte_move m_triple = {
+        .card_played = 12, // Roi de trèfle (val 14)
+        .cards_picked = { .size = 6, .max = 6, .array = triple_arr }
+    };
+    bool is_leg = false;
+    err = is_legal(&is_leg, &m_triple);
+    assert(err == e_ok);
+    assert(is_leg == true);
+
+    // 2. Rejet strict : Table = { 5 (carte 4), 5 (carte 17), 2 (carte 1) }, Jouée = 10 (carte 9)
+    // Tenter de ramasser les 3 cartes {5, 5, 2} avec un 10 doit être rejeté (5+5=10 mais 2 résiduel non apparié)
+    table.nb_cards_on_table = 3;
+    table.cards_on_table[0] = 4;
+    table.cards_on_table[1] = 17;
+    table.cards_on_table[2] = 1;
+
+    uint8_t invalid_arr[3] = { 4, 17, 1 };
+    struct s_cte_move m_invalid = {
+        .card_played = 9, // 10 de pique (val 10)
+        .cards_picked = { .size = 3, .max = 3, .array = invalid_arr }
+    };
+    is_leg = true;
+    err = is_legal(&is_leg, &m_invalid);
+    assert(err == e_ok);
+    assert(is_leg == false);
+
+    // ---- T23 : Validation award_remaining_table_cards ----
+    reset_all_players(&players_ai);
+    table.nb_cards_on_table = 4;
+    table.cards_on_table[0] = 0;
+    table.cards_on_table[1] = 1;
+    table.cards_on_table[2] = 2;
+    table.cards_on_table[3] = 3;
+    err = award_remaining_table_cards(&players_ai, 0);
+    assert(err == e_ok);
+    assert(table.nb_cards_on_table == 0);
+    assert(players_ai.players[0].won_cards.size == 4);
+
+    // ID de captor invalide (> players->size) renvoie e_inval_val
+    err = award_remaining_table_cards(&players_ai, 99);
+    assert(err == e_inval_val);
+
+    // ---- T24 : Résolution Tactique Directe Minimax & Déterminisme ----
+    s_cte_pos tactical_pos;
+    memset(&tactical_pos, 0, sizeof(tactical_pos));
+    tactical_pos.nb_players = 2;
+    tactical_pos.current_player = 0;
+    tactical_pos.table_count = 2;
+    tactical_pos.table[0] = 11; // Dame de trèfle (val 13, 1 pt)
+    tactical_pos.table[1] = 9;  // As de trèfle (val 1, 1 pt)
+    tactical_pos.hand_counts[0] = 2;
+    tactical_pos.hands[0][0] = 12; // Roi de trèfle (val 14, 1 pt) -> capture Dame+As = 3 pts + tablic !
+    tactical_pos.hands[0][1] = 0;  // 2 de trèfle (val 2, 0 pt) -> défausse = 0 pt
+    tactical_pos.hand_counts[1] = 2;
+    tactical_pos.hands[1][0] = 2;
+    tactical_pos.hands[1][1] = 3;
+
+    struct s_cte_move_list tact_moves;
+    err = init_move_list(&tact_moves, 8);
+    assert(err == e_ok);
+    err = pos_gen_moves(&tact_moves, &tactical_pos);
+    assert(err == e_ok);
+
+    s_cte_search_config search_cfg = { .max_depth = 2, .timeout_ms = 0 };
+    uint16_t best_tact1 = search_best_move(&tactical_pos, &tact_moves, &search_cfg);
+    uint16_t best_tact2 = search_best_move(&tactical_pos, &tact_moves, &search_cfg);
+    assert(best_tact1 == best_tact2); // Déterminisme absolu
+
+    // Le meilleur coup doit être la prise avec le Roi (card_played == 12 et cards_picked.size == 2)
+    assert(tact_moves.moves[best_tact1].card_played == 12);
+    assert(tact_moves.moves[best_tact1].cards_picked.size == 2);
+    free_move_list(&tact_moves);
+
+    // ---- T25 : Fuzzing Multi-Joueurs (3p et 4p 2v2) croisé avec les 4 IA (100 graines) ----
+    // 1. Fuzzing 3 joueurs (50 graines)
+    struct s_cte_players players_3p_fuzz;
+    char *names_3p_fuzz[3] = { "Cheater", "Greedy", "Dumb" };
+    err = init_players(&players_3p_fuzz, 3, names_3p_fuzz);
+    assert(err == e_ok);
+    players_3p_fuzz.players[0].evaluator = eval_cheater;
+    players_3p_fuzz.players[1].evaluator = eval_greedy;
+    players_3p_fuzz.players[2].evaluator = eval_dumb;
+
+    s_cte_round_config config_3p_fuzz = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_cheater, eval_greedy, eval_dumb, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    for(unsigned int s = 300; s < 350; s++){
+        reset_all_players(&players_3p_fuzz);
+        srand(s);
+        err = run_round(&players_3p_fuzz, &config_3p_fuzz);
+        assert(err == e_ok);
+        assert(deck.cur_card == 52);
+        assert(table.nb_cards_on_table == 0);
+        uint8_t total_c = players_3p_fuzz.players[0].won_cards.size +
+                          players_3p_fuzz.players[1].won_cards.size +
+                          players_3p_fuzz.players[2].won_cards.size;
+        assert(total_c == 52);
+
+        uint8_t pts = 0;
+        for(uint8_t p = 0; p < 3; p++){
+            for(uint8_t c = 0; c < players_3p_fuzz.players[p].won_cards.size; c++){
+                pts += get_points(players_3p_fuzz.players[p].won_cards.array[c]);
+            }
+        }
+        assert(pts == 22);
+    }
+    free_players(&players_3p_fuzz);
+
+    // 2. Fuzzing 4 joueurs 2v2 par équipes (50 graines)
+    struct s_cte_players players_4p_fuzz;
+    char *names_4p_fuzz[4] = { "Cheater_T1", "Greedy_T2", "Cheater_T1", "Dumb_T2" };
+    err = init_players(&players_4p_fuzz, 4, names_4p_fuzz);
+    assert(err == e_ok);
+    players_4p_fuzz.players[0].evaluator = eval_cheater;
+    players_4p_fuzz.players[1].evaluator = eval_greedy;
+    players_4p_fuzz.players[2].evaluator = eval_cheater;
+    players_4p_fuzz.players[3].evaluator = eval_dumb;
+
+    s_cte_round_config config_4p_fuzz = {
+        .first_player  = 0,
+        .is_team_mode  = true,
+        .evaluators    = { eval_cheater, eval_greedy, eval_cheater, eval_dumb },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    for(unsigned int s = 400; s < 450; s++){
+        reset_all_players(&players_4p_fuzz);
+        srand(s);
+        err = run_round(&players_4p_fuzz, &config_4p_fuzz);
+        assert(err == e_ok);
+        assert(deck.cur_card == 52);
+        assert(table.nb_cards_on_table == 0);
+        uint8_t total_c = players_4p_fuzz.players[0].won_cards.size +
+                          players_4p_fuzz.players[1].won_cards.size +
+                          players_4p_fuzz.players[2].won_cards.size +
+                          players_4p_fuzz.players[3].won_cards.size;
+        assert(total_c == 52);
+
+        uint8_t pts = 0;
+        for(uint8_t p = 0; p < 4; p++){
+            for(uint8_t c = 0; c < players_4p_fuzz.players[p].won_cards.size; c++){
+                pts += get_points(players_4p_fuzz.players[p].won_cards.array[c]);
+            }
+        }
+        assert(pts == 22);
+    }
+    free_players(&players_4p_fuzz);
+
     free_players(&players_ai);
 
     free_players(&players_4p);
