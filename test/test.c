@@ -1150,6 +1150,75 @@ int main(){
     int8_t team_winner = match_winner(&match_team);
     assert(team_winner == 0 || team_winner == 1);
 
+    // ---- T20 : Validation score_move & Évaluateurs IA (dumb, greedy, cheater/minimax) ----
+    // 1. Test score_move
+    struct s_cte_move m_drop = { .card_played = 0, .cards_picked = { .size = 0, .max = 0, .array = NULL } };
+    s_cte_move_score sc_d = score_move(&m_drop, 4);
+    assert(sc_d.card_points == 0 && sc_d.nb_cards == 0 && !sc_d.is_tablic && sc_d.total_points == 0);
+
+    // Prise de 10♣ (carte 8, 1 pt) avec 10♦ (carte 21, 2 pts) sur table de 3 cartes
+    uint8_t picked_arr[1] = { 8 };
+    struct s_cte_move m_cap = { .card_played = 21, .cards_picked = { .size = 1, .max = 1, .array = picked_arr } };
+    s_cte_move_score sc_c = score_move(&m_cap, 3);
+    assert(sc_c.card_points == 3); // 2 + 1 = 3
+    assert(sc_c.nb_cards == 2);
+    assert(!sc_c.is_tablic);
+    assert(sc_c.total_points == 3);
+
+    // Prise Tablić (1 carte sur table, ramasse 1 carte)
+    s_cte_move_score sc_tab = score_move(&m_cap, 1);
+    assert(sc_tab.is_tablic);
+    assert(sc_tab.total_points == 4); // 3 + 1 bonus tablic
+
+    // 2. Partie Greedy vs Dumb
+    struct s_cte_players players_ai;
+    char *names_ai[2] = { "Greedy", "Dumb" };
+    err = init_players(&players_ai, 2, names_ai);
+    assert(err == e_ok);
+    players_ai.players[0].evaluator = eval_greedy;
+    players_ai.players[1].evaluator = eval_dumb;
+
+    s_cte_round_config config_ai = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_greedy, eval_dumb, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    srand(555);
+    err = run_round(&players_ai, &config_ai);
+    assert(err == e_ok);
+    assert(deck.cur_card == 52);
+    assert(table.nb_cards_on_table == 0);
+    assert(players_ai.players[0].won_cards.size + players_ai.players[1].won_cards.size == 52);
+
+    s_cte_round_score sc_ai[2] = {0};
+    err = compute_round_score(&players_ai, sc_ai, false);
+    assert(err == e_ok);
+    // Greedy doit écraser Dumb
+    assert(sc_ai[0].total >= sc_ai[1].total);
+
+    // 3. Partie Cheater (Minimax) vs Random
+    reset_all_players(&players_ai);
+    players_ai.players[0].evaluator = eval_cheater;
+    players_ai.players[1].evaluator = eval_random;
+    config_ai.evaluators[0] = eval_cheater;
+    config_ai.evaluators[1] = eval_random;
+
+    srand(666);
+    err = run_round(&players_ai, &config_ai);
+    assert(err == e_ok);
+    assert(deck.cur_card == 52);
+    assert(table.nb_cards_on_table == 0);
+    assert(players_ai.players[0].won_cards.size + players_ai.players[1].won_cards.size == 52);
+
+    s_cte_round_score sc_cheat[2] = {0};
+    err = compute_round_score(&players_ai, sc_cheat, false);
+    assert(err == e_ok);
+    assert(sc_cheat[0].total >= sc_cheat[1].total);
+
+    free_players(&players_ai);
+
     free_players(&players_4p);
     free_players(&players);
 

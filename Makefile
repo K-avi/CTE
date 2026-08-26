@@ -3,8 +3,8 @@ CFLAGS = -std=gnu2x -Wall -Wextra -Wpedantic -Wno-unused-parameter -march=native
 RELEASE_FLAGS = -O3 -funroll-loops
 DEBUG_FLAGS = -g -Og -fsanitize=address -fsanitize=undefined
 
-SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/front_cli.c
-HDRS = include/card.h include/player.h include/move.h include/game.h include/eval.h include/front_cli.h include/cte.h
+SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/minmax.c src/front_cli.c
+HDRS = include/card.h include/player.h include/move.h include/game.h include/eval.h include/minmax.h include/front_cli.h include/cte.h
 
 .PHONY: all clean cte test run-test tests check
 

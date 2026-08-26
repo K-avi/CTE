@@ -18,6 +18,8 @@ static void print_usage(const char *prog_name){
     printf("Options:\n");
     printf("  -n, --players <number>     Number of players: 2 (default), 3, or 4\n");
     printf("  -t, --team                 Enable 4-player 2v2 team mode (valid only with -n 4)\n");
+    printf("  -a, --ai-type <list>       AI strategy or comma-separated list (e.g. greedy or greedy,cheater)\n");
+    printf("                             Supported: random (default), dumb, greedy, cheater\n");
     printf("  -m, --mode <mode>          UI mode: cli (default), tui, gui\n");
     printf("  -s, --style <style>        Card render style: unicode (default), ascii\n");
     printf("  -g, --game <mode>          Game mode: h-vs-ai (default), h-vs-h, ai-vs-ai\n");
@@ -27,12 +29,27 @@ static void print_usage(const char *prog_name){
     printf("  -h, --help                 Display this help message and exit\n\n");
 }
 
+static bool parse_ai_strategy(const char *token, e_cli_ai_type *type_out){
+    if(strcmp(token, "random") == 0){
+        *type_out = AI_TYPE_RANDOM; return true;
+    } else if(strcmp(token, "dumb") == 0){
+        *type_out = AI_TYPE_DUMB; return true;
+    } else if(strcmp(token, "greedy") == 0){
+        *type_out = AI_TYPE_GREEDY; return true;
+    } else if(strcmp(token, "cheater") == 0 || strcmp(token, "minimax") == 0){
+        *type_out = AI_TYPE_CHEATER; return true;
+    }
+    return false;
+}
+
 int main(int argc, char **argv){
     e_ui_mode mode = UI_MODE_CLI;
     s_cte_cli_config cli_config = {
         .nb_players    = 2,
         .is_team_mode  = false,
         .game_type     = GAME_HUMAN_VS_AI,
+        .ai_types      = { AI_TYPE_RANDOM, AI_TYPE_RANDOM, AI_TYPE_RANDOM, AI_TYPE_RANDOM },
+        .nb_ai_types   = 0,
         .style         = CTE_RENDER_UNICODE,
         .winning_score = 101,
         .max_rounds    = 0,
@@ -43,6 +60,8 @@ int main(int argc, char **argv){
     static struct option long_options[] = {
         {"players",       required_argument, 0, 'n'},
         {"team",          no_argument,       0, 't'},
+        {"ai-type",       required_argument, 0, 'a'},
+        {"ai",            required_argument, 0, 'a'},
         {"mode",          required_argument, 0, 'm'},
         {"style",         required_argument, 0, 's'},
         {"game",          required_argument, 0, 'g'},
@@ -56,7 +75,7 @@ int main(int argc, char **argv){
 
     int opt;
     int option_index = 0;
-    while((opt = getopt_long(argc, argv, "n:tm:s:g:w:c:r:h", long_options, &option_index)) != -1){
+    while((opt = getopt_long(argc, argv, "n:ta:m:s:g:w:c:r:h", long_options, &option_index)) != -1){
         switch(opt){
             case 'n': {
                 long val = strtol(optarg, NULL, 10);
@@ -70,6 +89,28 @@ int main(int argc, char **argv){
             case 't':
                 cli_config.is_team_mode = true;
                 break;
+            case 'a': {
+                char *arg_copy = strdup(optarg);
+                if(!arg_copy){
+                    fprintf(stderr, "Error: Memory allocation failed.\n");
+                    return 1;
+                }
+                char *saveptr = NULL;
+                char *token = strtok_r(arg_copy, ",", &saveptr);
+                cli_config.nb_ai_types = 0;
+                while(token && cli_config.nb_ai_types < 4){
+                    e_cli_ai_type type;
+                    if(!parse_ai_strategy(token, &type)){
+                        fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater\n", token);
+                        free(arg_copy);
+                        return 1;
+                    }
+                    cli_config.ai_types[cli_config.nb_ai_types++] = type;
+                    token = strtok_r(NULL, ",", &saveptr);
+                }
+                free(arg_copy);
+                break;
+            }
             case 'm':
                 if(strcmp(optarg, "cli") == 0){
                     mode = UI_MODE_CLI;

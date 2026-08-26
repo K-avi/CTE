@@ -19,7 +19,7 @@ Steps & Roadmap :
         - Configurable winning threshold (run_match, s_cte_match)
    [x] 3 & 4 player support
    [x] Team mode for 4 players
-   [ ] cli Configurable AI evaluation function
+   [x] cli Configurable AI evaluation function (per-player strategies)
    [x] separate backend (move choosing) and frontend (cli/tui/gui) completely
    [x] split files & headers (cleanup)
 
@@ -29,26 +29,35 @@ Steps & Roadmap :
    [ ] Potential GUI (Raylib, SDL, or Web wrapper)
 
 3. AI & Search :
-   [x] Generic evaluator interface (t_evaluator / s_cte_round_config) + eval_random stub
-   [ ] Basic heuristic evaluation:
-        - Greedy point capture maximization
-        - Drop strategy: minimize opponent capture opportunities
-        - The dummy : always try to drop a card when possible
-   [ ] Advanced AI:
-       - Card counting & probability tracking of remaining deck / opponent hand
-       - Minimax / Expectiminimax with Alpha-Beta pruning
-       - Monte Carlo Tree Search (MCTS)
+   [x] Generic evaluator interface (t_evaluator / s_cte_round_config) + eval_random
+   [x] Heuristic & baseline evaluators:
+        - [x] The dummy : always try to drop a card when possible (eval_dumb)
+        - [x] Greedy point capture maximization (eval_greedy)
+        - [x] Pure move scoring function decoupled from state (score_move)
+   [x] Minimax & Tree Search Engine (minmax.h / minmax.c):
+        - [x] Compact 64-byte L1 cache snapshot (s_cte_pos)
+        - [x] Alpha-Beta pruning search (search_best_move)
+        - [x] Cheater / Oracle lookahead evaluator (eval_cheater)
+   [ ] Advanced Search & Optimization:
+        - [ ] Move ordering (score_move heuristic & PV move first)
+        - [ ] Principal Variation (PV) caching & turn reuse
+        - [ ] Transposition Table (TT) with Zobrist hashing
+        - [ ] Fair AI: Perfect Information Monte Carlo (PIMC determinization)
+        - [ ] Monte Carlo Tree Search (MCTS)
 
-4. HPC & Architecture Optimizations (Future) :
+4. HPC & Architecture Optimizations (Bitboards & SIMD) :
+   [ ] Backend-agnostic engine abstraction layer:
+        - Define abstract engine interface (state, move generator, move applicator, evaluator)
+        - Seamless pluggability between Array backend, Bitboard backend, and SIMD backend
    [ ] Reentrant game state:
-       - Encapsulate global deck & table into a single `s_cte_game` struct
-       - Eliminate dynamic allocations in move generation (use compact stack arrays)
-   [ ] 64-bit Bitboard representation:
-       - Represent 52-card sets as `uint64_t` bitboards
-       - Fast bitwise set operations with hardware BMI2 instructions (`POPCNT`, `TZCNT`, `BLSR`)
+        - Encapsulate global deck & table into reentrant struct (s_cte_game)
+        - Eliminate dynamic heap allocations during search
+   [ ] 64-bit Bitboard backend:
+        - Represent 52-card sets as `uint64_t` bitboards (table, hand, won cards)
+        - Fast bitwise subset sum / exact partition using BMI2 (`POPCNT`, `TZCNT`, `BLSR`, `PDEP`)
+   [ ] SIMD Vectorization backend (AVX2 / AVX-512 / NEON / MIPPv2):
+        - Inter-game batch vectorization (Structure of Arrays - SoA)
+        - Parallel batch rollouts and SIMD-accelerated linear evaluations
    [ ] Multithreading:
-       - Parallel MCTS rollouts and tree search across CPU cores
-       - Mass self-play game simulation for heuristic tuning / reinforcement learning
-   [ ] SIMD Vectorization (AVX2 / AVX-512 / NEON):
-       - Inter-game batch vectorization (Structure of Arrays - SoA)
-       - Parallel batch rollouts and SIMD-accelerated linear/NNUE evaluations
+        - Root move parallelization & Lazy SMP with lock-free TT
+        - Mass self-play game simulation for reinforcement learning

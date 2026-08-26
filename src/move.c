@@ -352,3 +352,25 @@ t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player, bo
 
     return e_ok;
 }
+
+s_cte_move_score score_move(const struct s_cte_move *move, uint8_t nb_cards_on_table){
+    s_cte_move_score res = {0};
+    if(!move) return res;
+
+    if(move->cards_picked.size == 0){
+        return res;
+    }
+
+    res.card_points = get_points(move->card_played);
+    for(uint8_t i = 0; i < move->cards_picked.size; i++){
+        res.card_points += get_points(move->cards_picked.array[i]);
+    }
+    res.nb_cards = (uint8_t)(1 + move->cards_picked.size);
+
+    if(nb_cards_on_table > 0 && move->cards_picked.size == nb_cards_on_table){
+        res.is_tablic = true;
+    }
+
+    res.total_points = res.card_points + (res.is_tablic ? 1 : 0);
+    return res;
+}

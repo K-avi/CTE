@@ -35,6 +35,16 @@ t_cteerr gen_card_moves(struct s_cte_move_list *moves, t_card card);
 t_cteerr gen_all_moves(struct s_cte_move_list *moves, struct s_cte_hand *hand);
 t_cteerr play_move(struct s_cte_move *move, struct s_cte_player_data *player, bool *captured);
 
+// Move scoring (pure evaluation, decoupled from state update)
+typedef struct {
+    uint8_t card_points;   // Points from captured cards (card_played + cards_picked), 0 if drop
+    uint8_t nb_cards;      // Number of captured cards (1 + cards_picked.size), 0 if drop
+    bool    is_tablic;     // True if table is completely cleared
+    uint8_t total_points;  // card_points + (is_tablic ? 1 : 0)
+} s_cte_move_score;
+
+s_cte_move_score score_move(const struct s_cte_move *move, uint8_t nb_cards_on_table);
+
 // Move formatting & printing
 void format_move(char *buf, size_t buf_size, const struct s_cte_move *move, e_cte_render_style style);
 void print_move(struct s_cte_move *move);

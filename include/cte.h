@@ -6,6 +6,7 @@
 #include "player.h"
 #include "move.h"
 #include "eval.h"
+#include "minmax.h"
 #include "game.h"
 #include "front_cli.h"
 

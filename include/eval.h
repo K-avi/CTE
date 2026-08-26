@@ -37,4 +37,16 @@ uint16_t eval_random(const s_cte_game_state *state,
                      const struct s_cte_move_list *moves,
                      void *ctx);
 
+uint16_t eval_dumb(const s_cte_game_state *state,
+                   const struct s_cte_move_list *moves,
+                   void *ctx);
+
+uint16_t eval_greedy(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx);
+
+uint16_t eval_cheater(const s_cte_game_state *state,
+                      const struct s_cte_move_list *moves,
+                      void *ctx);
+
 #endif
