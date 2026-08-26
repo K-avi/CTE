@@ -16,6 +16,8 @@ static void print_usage(const char *prog_name){
     printf("Usage: %s [OPTIONS]\n\n", prog_name);
     printf("Tablić card game engine & interactive player.\n\n");
     printf("Options:\n");
+    printf("  -n, --players <number>     Number of players: 2 (default), 3, or 4\n");
+    printf("  -t, --team                 Enable 4-player 2v2 team mode (valid only with -n 4)\n");
     printf("  -m, --mode <mode>          UI mode: cli (default), tui, gui\n");
     printf("  -s, --style <style>        Card render style: unicode (default), ascii\n");
     printf("  -g, --game <mode>          Game mode: h-vs-ai (default), h-vs-h, ai-vs-ai\n");
@@ -28,6 +30,8 @@ static void print_usage(const char *prog_name){
 int main(int argc, char **argv){
     e_ui_mode mode = UI_MODE_CLI;
     s_cte_cli_config cli_config = {
+        .nb_players    = 2,
+        .is_team_mode  = false,
         .game_type     = GAME_HUMAN_VS_AI,
         .style         = CTE_RENDER_UNICODE,
         .winning_score = 101,
@@ -37,6 +41,8 @@ int main(int argc, char **argv){
     bool seed_specified = false;
 
     static struct option long_options[] = {
+        {"players",       required_argument, 0, 'n'},
+        {"team",          no_argument,       0, 't'},
         {"mode",          required_argument, 0, 'm'},
         {"style",         required_argument, 0, 's'},
         {"game",          required_argument, 0, 'g'},
@@ -50,8 +56,20 @@ int main(int argc, char **argv){
 
     int opt;
     int option_index = 0;
-    while((opt = getopt_long(argc, argv, "m:s:g:w:c:r:h", long_options, &option_index)) != -1){
+    while((opt = getopt_long(argc, argv, "n:tm:s:g:w:c:r:h", long_options, &option_index)) != -1){
         switch(opt){
+            case 'n': {
+                long val = strtol(optarg, NULL, 10);
+                if(val < 2 || val > 4){
+                    fprintf(stderr, "Error: Invalid number of players '%s'. Must be 2, 3, or 4.\n", optarg);
+                    return 1;
+                }
+                cli_config.nb_players = (uint8_t)val;
+                break;
+            }
+            case 't':
+                cli_config.is_team_mode = true;
+                break;
             case 'm':
                 if(strcmp(optarg, "cli") == 0){
                     mode = UI_MODE_CLI;
@@ -120,6 +138,11 @@ int main(int argc, char **argv){
                 print_usage(argv[0]);
                 return 1;
         }
+    }
+
+    if(cli_config.is_team_mode && cli_config.nb_players != 4){
+        fprintf(stderr, "Error: Team mode (-t / --team) is only valid with 4 players (-n 4).\n");
+        return 1;
     }
 
     srand(seed);

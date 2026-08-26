@@ -10,6 +10,8 @@ typedef enum {
 } e_cli_game_type;
 
 typedef struct {
+    uint8_t            nb_players;    // 2, 3, or 4 (default: 2)
+    bool               is_team_mode;  // 2v2 team mode (valid with nb_players == 4)
     e_cli_game_type    game_type;
     e_cte_render_style style;
     uint16_t           winning_score;

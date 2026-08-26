@@ -25,6 +25,7 @@ struct s_cte_ui_callbacks;
 // Round configuration
 typedef struct {
     uint8_t     first_player;     // Index of first player (0..nb_players-1)
+    bool        is_team_mode;     // True for 4-player 2v2 team mode (P0+P2 vs P1+P3)
     t_evaluator evaluators[4];    // Evaluators per player slot
     void       *eval_contexts[4]; // Context pointers (NULL for eval_random)
     const struct s_cte_ui_callbacks *callbacks; // Optional UI event callbacks (NULL for headless)

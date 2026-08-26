@@ -13,6 +13,7 @@ t_cteerr init_players(struct s_cte_players *players, uint8_t nb_players, char **
 
     for(uint8_t i = 0 ; i < nb_players; i++){
         players->players[i].player_id = i;
+        players->players[i].team_id = (uint8_t)(i % 2);
         players->players[i].nb_tablic = 0;
         players->players[i].hand.size = 0;
         players->players[i].won_cards.size = 0;

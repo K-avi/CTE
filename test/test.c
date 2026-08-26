@@ -750,7 +750,7 @@ int main(){
 
     // ---- T12 : total card_points après manche complète == 22 ----
     s_cte_round_score sc_total[2] = {0};
-    t_cteerr err_t12 = compute_round_score(&players, sc_total);
+    t_cteerr err_t12 = compute_round_score(&players, sc_total, false);
     assert(err_t12 == e_ok);
     // Somme de __tab_points sur les 52 cartes = 6 (clubs) + 6 (diamonds) + 5 (hearts) + 5 (spades) = 22
     assert(sc_total[0].card_points + sc_total[1].card_points == 22);
@@ -781,7 +781,7 @@ int main(){
     players.players[1].nb_tablic = 0;
 
     s_cte_round_score scores[2] = {0};
-    err = compute_round_score(&players, scores);
+    err = compute_round_score(&players, scores, false);
     assert(err == e_ok);
 
     // Player 0 : bonus majorité +3, tablic +2
@@ -810,7 +810,7 @@ int main(){
     players.players[1].won_cards.size = 26;
 
     s_cte_round_score scores2[2] = {0};
-    err = compute_round_score(&players, scores2);
+    err = compute_round_score(&players, scores2, false);
     assert(err == e_ok);
     assert(scores2[0].majority_bonus == 0);
     assert(scores2[1].majority_bonus == 0);
@@ -836,7 +836,7 @@ int main(){
     players.players[1].nb_tablic = 0;
 
     s_cte_round_score sc_abs[2] = {0};
-    t_cteerr err_t11 = compute_round_score(&players, sc_abs);
+    t_cteerr err_t11 = compute_round_score(&players, sc_abs, false);
     assert(err_t11 == e_ok);
     assert(sc_abs[0].card_points == 6);
     assert(sc_abs[0].majority_bonus == 0);
@@ -856,7 +856,7 @@ int main(){
     players.players[1].won_cards.size = 25;
 
     s_cte_round_score sc_27[2] = {0};
-    t_cteerr err_t16 = compute_round_score(&players, sc_27);
+    t_cteerr err_t16 = compute_round_score(&players, sc_27, false);
     assert(err_t16 == e_ok);
     assert(sc_27[0].majority_bonus == 3);
     assert(sc_27[1].majority_bonus == 0);
@@ -992,6 +992,165 @@ int main(){
     format_move(m_buf, sizeof(m_buf), &m_fmt_cap, CTE_RENDER_ASCII);
     assert(strcmp(m_buf, "Play 10C -> Take [ 7C, 3C ]") == 0);
 
+    // ---- T17 : Partie complète à 3 joueurs ----
+    struct s_cte_players players_3p;
+    char *names_3p[3] = { "Alice", "Bob", "Charlie" };
+    err = init_players(&players_3p, 3, names_3p);
+    assert(err == e_ok);
+    assert(players_3p.size == 3);
+
+    s_cte_round_config config_3p = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_random, eval_random, eval_random, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    srand(777);
+    err = run_round(&players_3p, &config_3p);
+    assert(err == e_ok);
+    assert(deck.cur_card == 52);
+    assert(table.nb_cards_on_table == 0);
+    for(int p = 0; p < 3; p++){
+        assert(players_3p.players[p].hand.size == 0);
+    }
+    uint8_t seen_3p[52] = {0};
+    uint16_t total_won_3p = 0;
+    for(int p = 0; p < 3; p++){
+        total_won_3p += players_3p.players[p].won_cards.size;
+        for(int j = 0; j < players_3p.players[p].won_cards.size; j++){
+            seen_3p[players_3p.players[p].won_cards.array[j]]++;
+        }
+    }
+    assert(total_won_3p == 52);
+    for(int i = 0; i < 52; i++){
+        assert(seen_3p[i] == 1);
+    }
+    s_cte_round_score scores_3p[3] = {0};
+    err = compute_round_score(&players_3p, scores_3p, false);
+    assert(err == e_ok);
+    assert(scores_3p[0].card_points + scores_3p[1].card_points + scores_3p[2].card_points == 22);
+
+    // Fuzzing 3 joueurs (20 seeds)
+    for(int s = 0; s < 20; s++){
+        reset_all_players(&players_3p);
+        srand(1000 + s);
+        err = run_round(&players_3p, &config_3p);
+        assert(err == e_ok);
+        uint8_t f_seen[52] = {0};
+        uint16_t f_tot = 0;
+        for(int p = 0; p < 3; p++){
+            f_tot += players_3p.players[p].won_cards.size;
+            for(int j = 0; j < players_3p.players[p].won_cards.size; j++){
+                f_seen[players_3p.players[p].won_cards.array[j]]++;
+            }
+        }
+        assert(f_tot == 52);
+        for(int i = 0; i < 52; i++) assert(f_seen[i] == 1);
+    }
+    free_players(&players_3p);
+
+    // ---- T18 : Partie complète à 4 joueurs (Individuel) ----
+    struct s_cte_players players_4p;
+    char *names_4p[4] = { "P1", "P2", "P3", "P4" };
+    err = init_players(&players_4p, 4, names_4p);
+    assert(err == e_ok);
+    assert(players_4p.size == 4);
+
+    s_cte_round_config config_4p = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_random, eval_random, eval_random, eval_random },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    srand(888);
+    err = run_round(&players_4p, &config_4p);
+    assert(err == e_ok);
+    assert(deck.cur_card == 52);
+    assert(table.nb_cards_on_table == 0);
+    for(int p = 0; p < 4; p++){
+        assert(players_4p.players[p].hand.size == 0);
+    }
+    uint8_t seen_4p[52] = {0};
+    uint16_t total_won_4p = 0;
+    for(int p = 0; p < 4; p++){
+        total_won_4p += players_4p.players[p].won_cards.size;
+        for(int j = 0; j < players_4p.players[p].won_cards.size; j++){
+            seen_4p[players_4p.players[p].won_cards.array[j]]++;
+        }
+    }
+    assert(total_won_4p == 52);
+    for(int i = 0; i < 52; i++){
+        assert(seen_4p[i] == 1);
+    }
+    s_cte_round_score scores_4p[4] = {0};
+    err = compute_round_score(&players_4p, scores_4p, false);
+    assert(err == e_ok);
+    assert(scores_4p[0].card_points + scores_4p[1].card_points + scores_4p[2].card_points + scores_4p[3].card_points == 22);
+
+    // Fuzzing 4 joueurs individuel (20 seeds)
+    for(int s = 0; s < 20; s++){
+        reset_all_players(&players_4p);
+        srand(2000 + s);
+        err = run_round(&players_4p, &config_4p);
+        assert(err == e_ok);
+        uint8_t f_seen[52] = {0};
+        uint16_t f_tot = 0;
+        for(int p = 0; p < 4; p++){
+            f_tot += players_4p.players[p].won_cards.size;
+            for(int j = 0; j < players_4p.players[p].won_cards.size; j++){
+                f_seen[players_4p.players[p].won_cards.array[j]]++;
+            }
+        }
+        assert(f_tot == 52);
+        for(int i = 0; i < 52; i++) assert(f_seen[i] == 1);
+    }
+
+    // ---- T19 : Partie à 4 joueurs en Mode Équipe 2v2 ----
+    s_cte_round_config config_team = {
+        .first_player  = 0,
+        .is_team_mode  = true,
+        .evaluators    = { eval_random, eval_random, eval_random, eval_random },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+
+    reset_all_players(&players_4p);
+    srand(999);
+    err = run_round(&players_4p, &config_team);
+    assert(err == e_ok);
+
+    s_cte_round_score scores_team[4] = {0};
+    err = compute_round_score(&players_4p, scores_team, true);
+    assert(err == e_ok);
+
+    uint8_t team0_cards = (uint8_t)(players_4p.players[0].won_cards.size + players_4p.players[2].won_cards.size);
+    uint8_t team1_cards = (uint8_t)(players_4p.players[1].won_cards.size + players_4p.players[3].won_cards.size);
+    assert(team0_cards + team1_cards == 52);
+
+    if(team0_cards >= 27 && team0_cards != team1_cards){
+        assert(scores_team[0].majority_bonus == 3);
+        assert(scores_team[1].majority_bonus == 0);
+    } else if(team1_cards >= 27 && team0_cards != team1_cards){
+        assert(scores_team[1].majority_bonus == 3);
+        assert(scores_team[0].majority_bonus == 0);
+    } else {
+        assert(scores_team[0].majority_bonus == 0);
+        assert(scores_team[1].majority_bonus == 0);
+    }
+
+    // Match 2v2
+    reset_all_players(&players_4p);
+    struct s_cte_match match_team;
+    err = init_match(&match_team, &players_4p, 51);
+    assert(err == e_ok);
+    err = run_match(&match_team, &config_team);
+    assert(err == e_ok);
+    assert(match_is_over(&match_team));
+    int8_t team_winner = match_winner(&match_team);
+    assert(team_winner == 0 || team_winner == 1);
+
+    free_players(&players_4p);
     free_players(&players);
 
     printf("All tests passed\n");

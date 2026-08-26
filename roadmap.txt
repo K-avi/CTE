@@ -17,7 +17,8 @@ Steps & Roadmap :
         - Majority cards bonus (+3 points for >= 27 cards, 0 if 26/26 tie)
         - Tablic bonus points (+1 each)
         - Configurable winning threshold (run_match, s_cte_match)
-   [ ] 3 & 4 player support
+   [x] 3 & 4 player support
+   [x] Team mode for 4 players
    [ ] cli Configurable AI evaluation function
    [x] separate backend (move choosing) and frontend (cli/tui/gui) completely
    [x] split files & headers (cleanup)
@@ -32,6 +33,7 @@ Steps & Roadmap :
    [ ] Basic heuristic evaluation:
         - Greedy point capture maximization
         - Drop strategy: minimize opponent capture opportunities
+        - The dummy : always try to drop a card when possible
    [ ] Advanced AI:
        - Card counting & probability tracking of remaining deck / opponent hand
        - Minimax / Expectiminimax with Alpha-Beta pruning

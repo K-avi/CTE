@@ -17,10 +17,11 @@ typedef struct {
 // Match management structure
 struct s_cte_match {
     struct s_cte_players *players;
-    uint16_t match_scores[4]; // Cumulative score per player
+    uint16_t match_scores[4]; // Cumulative score per player (or per team in team mode)
     uint16_t winning_score;   // Configurable (e.g. 51, 101, 201)
     uint8_t  round_nb;        // Current round index (0-indexed)
     uint8_t  max_rounds;      // Optional round limit (0 = unlimited / by score)
+    bool     is_team_mode;    // True for 4-player 2v2 team mode
 };
 
 // UI Event Observer Callbacks
@@ -40,7 +41,7 @@ t_cteerr award_remaining_table_cards(struct s_cte_players *players, uint8_t last
 t_cteerr run_round(struct s_cte_players *players, const s_cte_round_config *config);
 
 // Scoring & match execution
-t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[]);
+t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[], bool is_team_mode);
 t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, uint16_t winning_score);
 bool     match_is_over(const struct s_cte_match *match);
 int8_t   match_winner(const struct s_cte_match *match);

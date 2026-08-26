@@ -4,7 +4,7 @@
 
 t_cteerr setup_game(struct s_cte_players *players){
     if(!players) return e_null;
-    if(players->size != 2) return e_inval_val;
+    if(players->size < 2 || players->size > 4) return e_inval_val;
 
     // Initialize unshuffled deck 0..51
     for(int i = 0 ; i < 52; i++){
@@ -19,17 +19,18 @@ t_cteerr setup_game(struct s_cte_players *players){
         deck.cards[j] = temp;
     }
 
-    // Deal 6 cards to player 0, 6 to player 1
-    for(int i = 0 ; i < 6; i++){
-        players->players[0].hand.array[i] = deck.cards[i];
-        players->players[1].hand.array[i] = deck.cards[i+6];
+    // Dynamic dealing: 12 / P cards per player (6 for 2p, 4 for 3p, 3 for 4p)
+    uint8_t cards_per_player = (uint8_t)(12 / players->size);
+    for(uint8_t p = 0; p < players->size; p++){
+        for(uint8_t i = 0; i < cards_per_player; i++){
+            players->players[p].hand.array[i] = deck.cards[p * cards_per_player + i];
+        }
+        players->players[p].hand.size = cards_per_player;
     }
-    players->players[0].hand.size = 6;
-    players->players[1].hand.size = 6;
 
     // Put 4 cards on the table
     for(int i = 0; i < 4; i++){
-        table.cards_on_table[i] = deck.cards[i+12];
+        table.cards_on_table[i] = deck.cards[12 + i];
     }
     table.nb_cards_on_table = 4;
     deck.cur_card = 16;
@@ -39,15 +40,16 @@ t_cteerr setup_game(struct s_cte_players *players){
 
 t_cteerr deal_next_hand(struct s_cte_players *players){
     if(!players) return e_null;
-    if(players->size != 2) return e_inval_val;
+    if(players->size < 2 || players->size > 4) return e_inval_val;
     if(deck.cur_card + 12 > DECKSIZE) return e_inval_val;
 
-    for(int i = 0; i < 6; i++){
-        players->players[0].hand.array[i] = deck.cards[deck.cur_card + i];
-        players->players[1].hand.array[i] = deck.cards[deck.cur_card + i + 6];
+    uint8_t cards_per_player = (uint8_t)(12 / players->size);
+    for(uint8_t p = 0; p < players->size; p++){
+        for(uint8_t i = 0; i < cards_per_player; i++){
+            players->players[p].hand.array[i] = deck.cards[deck.cur_card + p * cards_per_player + i];
+        }
+        players->players[p].hand.size = cards_per_player;
     }
-    players->players[0].hand.size = 6;
-    players->players[1].hand.size = 6;
     deck.cur_card += 12;
 
     return e_ok;
@@ -71,7 +73,7 @@ t_cteerr award_remaining_table_cards(struct s_cte_players *players, uint8_t last
 
 t_cteerr run_round(struct s_cte_players *players, const s_cte_round_config *config){
     if(!players || !config) return e_null;
-    if(players->size != 2) return e_inval_val;
+    if(players->size < 2 || players->size > 4) return e_inval_val;
 
     for(uint8_t i = 0; i < players->size; i++){
         t_evaluator eval_func = players->players[i].evaluator ? players->players[i].evaluator : config->evaluators[i];
@@ -159,33 +161,42 @@ t_cteerr run_round(struct s_cte_players *players, const s_cte_round_config *conf
     return e_ok;
 }
 
-t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[]){
+t_cteerr compute_round_score(struct s_cte_players *players, s_cte_round_score scores[], bool is_team_mode){
     if(!players || !scores) return e_null;
 
     uint8_t nb = players->size;
 
     for(uint8_t i = 0; i < nb; i++){
-        scores[i].card_points  = 0;
+        scores[i].card_points   = 0;
+        scores[i].majority_bonus = 0;
         scores[i].tablic_points = players->players[i].nb_tablic;
         for(uint8_t j = 0; j < players->players[i].won_cards.size; j++){
             scores[i].card_points += get_points(players->players[i].won_cards.array[j]);
         }
     }
 
-    for(uint8_t i = 0; i < nb; i++) scores[i].majority_bonus = 0;
+    if(is_team_mode && nb == 4){
+        // 2v2 Teams: Team 0 (P0 + P2) vs Team 1 (P1 + P3)
+        uint8_t team0_cards = (uint8_t)(players->players[0].won_cards.size + players->players[2].won_cards.size);
+        uint8_t team1_cards = (uint8_t)(players->players[1].won_cards.size + players->players[3].won_cards.size);
 
-    if(nb == 2){
-        uint8_t n0 = players->players[0].won_cards.size;
-        uint8_t n1 = players->players[1].won_cards.size;
-        if(n0 >= 27 && n0 != n1) scores[0].majority_bonus = 3;
-        if(n1 >= 27 && n0 != n1) scores[1].majority_bonus = 3;
+        if(team0_cards >= 27 && team0_cards != team1_cards){
+            scores[0].majority_bonus = 3;
+        } else if(team1_cards >= 27 && team0_cards != team1_cards){
+            scores[1].majority_bonus = 3;
+        }
     } else {
+        // Individual mode: 2, 3, or 4 players
         uint8_t max_cards = 0;
         uint8_t max_count = 0;
         for(uint8_t i = 0; i < nb; i++){
             uint8_t nc = players->players[i].won_cards.size;
-            if(nc > max_cards){ max_cards = nc; max_count = 1; }
-            else if(nc == max_cards) max_count++;
+            if(nc > max_cards){
+                max_cards = nc;
+                max_count = 1;
+            } else if(nc == max_cards){
+                max_count++;
+            }
         }
         if(max_cards >= 27 && max_count == 1){
             for(uint8_t i = 0; i < nb; i++){
@@ -212,6 +223,7 @@ t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, ui
     match->winning_score = winning_score;
     match->round_nb      = 0;
     match->max_rounds    = 0;
+    match->is_team_mode  = false;
     for(uint8_t i = 0; i < 4; i++) match->match_scores[i] = 0;
 
     return e_ok;
@@ -220,14 +232,28 @@ t_cteerr init_match(struct s_cte_match *match, struct s_cte_players *players, ui
 bool match_is_over(const struct s_cte_match *match){
     if(!match) return false;
     if(match->max_rounds > 0 && match->round_nb >= match->max_rounds) return true;
-    for(uint8_t i = 0; i < match->players->size; i++){
-        if(match->match_scores[i] >= match->winning_score) return true;
+
+    if(match->is_team_mode && match->players->size == 4){
+        if(match->match_scores[0] >= match->winning_score || match->match_scores[1] >= match->winning_score){
+            return true;
+        }
+    } else {
+        for(uint8_t i = 0; i < match->players->size; i++){
+            if(match->match_scores[i] >= match->winning_score) return true;
+        }
     }
     return false;
 }
 
 int8_t match_winner(const struct s_cte_match *match){
     if(!match || !match_is_over(match)) return -1;
+
+    if(match->is_team_mode && match->players->size == 4){
+        if(match->match_scores[0] > match->match_scores[1]) return 0;
+        if(match->match_scores[1] > match->match_scores[0]) return 1;
+        return -1; // Tie
+    }
+
     int8_t winner = -1;
     uint16_t best = 0;
     for(uint8_t i = 0; i < match->players->size; i++){
@@ -242,6 +268,8 @@ int8_t match_winner(const struct s_cte_match *match){
 t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
     if(!match || !config) return e_null;
 
+    match->is_team_mode = config->is_team_mode;
+
     while(!match_is_over(match)){
         if(config->callbacks && config->callbacks->on_round_start){
             config->callbacks->on_round_start(match->round_nb + 1, config->ui_context);
@@ -251,11 +279,20 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
         if(err != e_ok) return err;
 
         s_cte_round_score scores[4] = {0};
-        err = compute_round_score(match->players, scores);
+        err = compute_round_score(match->players, scores, match->is_team_mode);
         if(err != e_ok) return err;
 
-        for(uint8_t i = 0; i < match->players->size; i++){
-            match->match_scores[i] += scores[i].total;
+        if(match->is_team_mode && match->players->size == 4){
+            uint16_t team0_pts = (uint16_t)(scores[0].total + scores[2].total);
+            uint16_t team1_pts = (uint16_t)(scores[1].total + scores[3].total);
+            match->match_scores[0] += team0_pts;
+            match->match_scores[1] += team1_pts;
+            match->match_scores[2] = match->match_scores[0];
+            match->match_scores[3] = match->match_scores[1];
+        } else {
+            for(uint8_t i = 0; i < match->players->size; i++){
+                match->match_scores[i] += scores[i].total;
+            }
         }
 
         if(config->callbacks && config->callbacks->on_round_end){

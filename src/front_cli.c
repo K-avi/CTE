@@ -5,6 +5,7 @@
 
 typedef struct {
     e_cte_render_style style;
+    bool               is_team_mode;
 } s_cli_ui_ctx;
 
 // Callback: start of round
@@ -29,7 +30,7 @@ static void cli_on_turn_start(const s_cte_game_state *state, const struct s_cte_
         for(uint8_t j = 0; j < pl->won_cards.size; j++){
             pts += get_points(pl->won_cards.array[j]);
         }
-        printf("   * %-10s : %2u cards captured (%2u card pts, %u tablic)\n",
+        printf("   * %-14s : %2u cards captured (%2u card pts, %u tablic)\n",
                pl->player_name,
                (unsigned)pl->won_cards.size,
                (unsigned)pts,
@@ -81,18 +82,30 @@ static void cli_on_move_played(const struct s_cte_player_data *player, const str
 
 // Callback: round end score breakdown
 static void cli_on_round_end(const struct s_cte_players *players, const s_cte_round_score scores[], void *ui_ctx){
-    (void)ui_ctx;
+    s_cli_ui_ctx *ctx = (s_cli_ui_ctx*)ui_ctx;
+    bool is_team = ctx ? ctx->is_team_mode : false;
+
     printf("\n-------------------------------------------------------\n");
     printf(" [Round Summary Breakdown]\n");
     for(uint8_t i = 0; i < players->size; i++){
         const struct s_cte_player_data *p = &players->players[i];
-        printf("   * %-10s : %2u card pts + %u majority (%2u cards) + %u tablic = %2u pts\n",
+        printf("   * %-14s : %2u card pts + %u majority (%2u cards) + %u tablic = %2u pts\n",
                p->player_name,
                (unsigned)scores[i].card_points,
                (unsigned)scores[i].majority_bonus,
                (unsigned)p->won_cards.size,
                (unsigned)scores[i].tablic_points,
                (unsigned)scores[i].total);
+    }
+
+    if(is_team && players->size == 4){
+        uint16_t team0_tot = (uint16_t)(scores[0].total + scores[2].total);
+        uint16_t team1_tot = (uint16_t)(scores[1].total + scores[3].total);
+        uint8_t team0_cards = (uint8_t)(players->players[0].won_cards.size + players->players[2].won_cards.size);
+        uint8_t team1_cards = (uint8_t)(players->players[1].won_cards.size + players->players[3].won_cards.size);
+        printf("   --- Team Totals ---\n");
+        printf("   * Team 1 (P1+P3) : %2u cards -> Round Score: %2u pts\n", team0_cards, team0_tot);
+        printf("   * Team 2 (P2+P4) : %2u cards -> Round Score: %2u pts\n", team1_cards, team1_tot);
     }
     printf("-------------------------------------------------------\n");
 }
@@ -101,13 +114,31 @@ static void cli_on_round_end(const struct s_cte_players *players, const s_cte_ro
 static void cli_on_match_end(const struct s_cte_match *match, int8_t winner_id, void *ui_ctx){
     (void)ui_ctx;
     printf("\n=======================================================\n");
-    if(winner_id >= 0 && winner_id < (int8_t)match->players->size){
-        printf("  MATCH OVER! Winner: %s with %u points! (Rounds played: %u)\n",
-               match->players->players[winner_id].player_name,
-               (unsigned)match->match_scores[winner_id],
-               (unsigned)match->round_nb);
+    if(match->is_team_mode && match->players->size == 4){
+        if(winner_id == 0){
+            printf("  MATCH OVER! Winner: Team 1 (%s & %s) with %u points! (Rounds played: %u)\n",
+                   match->players->players[0].player_name,
+                   match->players->players[2].player_name,
+                   (unsigned)match->match_scores[0],
+                   (unsigned)match->round_nb);
+        } else if(winner_id == 1){
+            printf("  MATCH OVER! Winner: Team 2 (%s & %s) with %u points! (Rounds played: %u)\n",
+                   match->players->players[1].player_name,
+                   match->players->players[3].player_name,
+                   (unsigned)match->match_scores[1],
+                   (unsigned)match->round_nb);
+        } else {
+            printf("  MATCH OVER in a Draw! (Rounds played: %u)\n", (unsigned)match->round_nb);
+        }
     } else {
-        printf("  MATCH OVER in a Draw! (Rounds played: %u)\n", (unsigned)match->round_nb);
+        if(winner_id >= 0 && winner_id < (int8_t)match->players->size){
+            printf("  MATCH OVER! Winner: %s with %u points! (Rounds played: %u)\n",
+                   match->players->players[winner_id].player_name,
+                   (unsigned)match->match_scores[winner_id],
+                   (unsigned)match->round_nb);
+        } else {
+            printf("  MATCH OVER in a Draw! (Rounds played: %u)\n", (unsigned)match->round_nb);
+        }
     }
     printf("=======================================================\n");
 }
@@ -152,50 +183,71 @@ static const s_cte_ui_callbacks g_cli_callbacks = {
 int run_cli_frontend(const s_cte_cli_config *config){
     if(!config) return 1;
 
-    struct s_cte_players players;
-    char *names[2];
+    uint8_t nb_p = config->nb_players;
+    if(nb_p < 2 || nb_p > 4) nb_p = 2;
 
-    switch(config->game_type){
-        case GAME_HUMAN_VS_AI:
-            names[0] = "Human";
-            names[1] = "Bot";
-            break;
-        case GAME_HUMAN_VS_HUMAN:
-            names[0] = "Player 1";
-            names[1] = "Player 2";
-            break;
-        case GAME_AI_VS_AI:
-            names[0] = "Bot 1";
-            names[1] = "Bot 2";
-            break;
+    struct s_cte_players players;
+    char *names[4];
+
+    if(nb_p == 2){
+        if(config->game_type == GAME_HUMAN_VS_AI){
+            names[0] = "Human"; names[1] = "Bot";
+        } else if(config->game_type == GAME_HUMAN_VS_HUMAN){
+            names[0] = "Player 1"; names[1] = "Player 2";
+        } else {
+            names[0] = "Bot 1"; names[1] = "Bot 2";
+        }
+    } else if(nb_p == 3){
+        if(config->game_type == GAME_HUMAN_VS_AI){
+            names[0] = "Human"; names[1] = "Bot 1"; names[2] = "Bot 2";
+        } else if(config->game_type == GAME_HUMAN_VS_HUMAN){
+            names[0] = "Player 1"; names[1] = "Player 2"; names[2] = "Player 3";
+        } else {
+            names[0] = "Bot 1"; names[1] = "Bot 2"; names[2] = "Bot 3";
+        }
+    } else { // 4 players
+        if(config->is_team_mode){
+            if(config->game_type == GAME_HUMAN_VS_AI){
+                names[0] = "Human (T1)"; names[1] = "Bot 1 (T2)"; names[2] = "Bot 2 (T1)"; names[3] = "Bot 3 (T2)";
+            } else if(config->game_type == GAME_HUMAN_VS_HUMAN){
+                names[0] = "P1 (T1)"; names[1] = "P2 (T2)"; names[2] = "P3 (T1)"; names[3] = "P4 (T2)";
+            } else {
+                names[0] = "Bot 1 (T1)"; names[1] = "Bot 2 (T2)"; names[2] = "Bot 3 (T1)"; names[3] = "Bot 4 (T2)";
+            }
+        } else {
+            if(config->game_type == GAME_HUMAN_VS_AI){
+                names[0] = "Human"; names[1] = "Bot 1"; names[2] = "Bot 2"; names[3] = "Bot 3";
+            } else if(config->game_type == GAME_HUMAN_VS_HUMAN){
+                names[0] = "Player 1"; names[1] = "Player 2"; names[2] = "Player 3"; names[3] = "Player 4";
+            } else {
+                names[0] = "Bot 1"; names[1] = "Bot 2"; names[2] = "Bot 3"; names[3] = "Bot 4";
+            }
+        }
     }
 
-    t_cteerr err = init_players(&players, 2, names);
+    t_cteerr err = init_players(&players, nb_p, names);
     if(err != e_ok){
         fprintf(stderr, "Error: Failed to initialize players (code: %u)\n", err);
         return 1;
     }
 
     // Configure player controller evaluators
-    switch(config->game_type){
-        case GAME_HUMAN_VS_AI:
-            players.players[0].is_human = true;
-            players.players[0].evaluator = cli_read_human_move;
-            players.players[1].is_human = false;
-            players.players[1].evaluator = eval_random;
-            break;
-        case GAME_HUMAN_VS_HUMAN:
-            players.players[0].is_human = true;
-            players.players[0].evaluator = cli_read_human_move;
-            players.players[1].is_human = true;
-            players.players[1].evaluator = cli_read_human_move;
-            break;
-        case GAME_AI_VS_AI:
-            players.players[0].is_human = false;
-            players.players[0].evaluator = eval_random;
-            players.players[1].is_human = false;
-            players.players[1].evaluator = eval_random;
-            break;
+    for(uint8_t i = 0; i < nb_p; i++){
+        if(config->game_type == GAME_HUMAN_VS_HUMAN){
+            players.players[i].is_human = true;
+            players.players[i].evaluator = cli_read_human_move;
+        } else if(config->game_type == GAME_HUMAN_VS_AI){
+            if(i == 0){
+                players.players[i].is_human = true;
+                players.players[i].evaluator = cli_read_human_move;
+            } else {
+                players.players[i].is_human = false;
+                players.players[i].evaluator = eval_random;
+            }
+        } else { // AI vs AI
+            players.players[i].is_human = false;
+            players.players[i].evaluator = eval_random;
+        }
     }
 
     struct s_cte_match match;
@@ -206,13 +258,16 @@ int run_cli_frontend(const s_cte_cli_config *config){
         return 1;
     }
     match.max_rounds = config->max_rounds;
+    match.is_team_mode = config->is_team_mode;
 
     s_cli_ui_ctx ui_ctx = {
-        .style = config->style
+        .style = config->style,
+        .is_team_mode = config->is_team_mode,
     };
 
     s_cte_round_config round_config = {
         .first_player  = 0,
+        .is_team_mode  = config->is_team_mode,
         .evaluators    = { NULL, NULL, NULL, NULL },
         .eval_contexts = { NULL, NULL, NULL, NULL },
         .callbacks     = &g_cli_callbacks,
@@ -222,12 +277,14 @@ int run_cli_frontend(const s_cte_cli_config *config){
     printf("=======================================================\n");
     printf("                   CTE - TABLIĆ CLI                    \n");
     printf("=======================================================\n");
+    printf(" Mode         : %u Players%s\n", (unsigned)nb_p, config->is_team_mode ? " (2v2 Teams)" : " (Individual)");
     printf(" Match Target : %u points%s\n", (unsigned)config->winning_score, (config->max_rounds > 0) ? " (or max rounds reached)" : "");
     if(config->max_rounds > 0){
         printf(" Max Rounds   : %u deck cycle%s\n", (unsigned)config->max_rounds, (config->max_rounds > 1) ? "s" : "");
     }
-    printf(" Player 1     : %s%s\n", names[0], players.players[0].is_human ? " (Interactive)" : " (AI)");
-    printf(" Player 2     : %s%s\n", names[1], players.players[1].is_human ? " (Interactive)" : " (AI)");
+    for(uint8_t i = 0; i < nb_p; i++){
+        printf(" Player %u     : %s%s\n", (unsigned)(i+1), names[i], players.players[i].is_human ? " (Interactive)" : " (AI)");
+    }
     printf(" Render Style : %s\n", (config->style == CTE_RENDER_UNICODE) ? "Unicode" : "ASCII");
     printf("=======================================================\n");
 

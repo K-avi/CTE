@@ -19,6 +19,7 @@ struct s_cte_move_list;
 
 struct s_cte_player_data {
     uint8_t player_id;
+    uint8_t team_id; // Team identifier (0 or 1 in 2v2 mode, or equal to player_id in individual mode)
     uint8_t nb_tablic;
     char *player_name;
     struct s_cte_hand hand;
