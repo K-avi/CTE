@@ -4,6 +4,28 @@
  */
 
 #include "bitboard_tables.h"
+#include "card.h"
+
+// 13-bit rank-mask LUT: g_suit_sum[rank_mask] = sum of nominal values
+// Initialized once at program start via init_suit_sum()
+uint8_t g_suit_sum[8192];
+
+void init_suit_sum(void){
+    static bool done = false;
+    if(done) return;
+    done = true;
+    // Values mirror the global values[13] table in card.c:
+    // rank 0=2, 1=3, ..., 8=10, 9=Ace(11), 10=J(12), 11=Q(13), 12=K(14)
+    static const uint8_t rank_vals[13] = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 };
+    for(uint32_t mask = 0; mask < 8192; mask++){
+        uint32_t s = 0;
+        for(uint8_t r = 0; r < 13; r++){
+            if(mask & (1u << r)) s += rank_vals[r];
+        }
+        g_suit_sum[mask] = (uint8_t)(s > 255 ? 255 : s);
+    }
+}
+
 
 const uint64_t g_reachability_mask[15] = {
     0x0ULL, // 0 unused
