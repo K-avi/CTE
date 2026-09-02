@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__GNUC__) || defined(__clang__)
+typedef uint64_t cte_v4di __attribute__((vector_size(32), aligned(8)));
+#endif
+
 void bitboard_from_game(s_cte_bitboard_state *bb_state, const s_cte_game *game){
     if(!bb_state || !game) return;
     memset(bb_state, 0, sizeof(s_cte_bitboard_state));
@@ -205,6 +209,8 @@ static uint8_t collect_active_base_masks(uint64_t table_bb, uint8_t target_val, 
     uint8_t found = 0;
     uint64_t temp = table_bb;
 
+    cte_v4di v_tbl = { table_bb, table_bb, table_bb, table_bb };
+
     // 2. Lookup only the pivot buckets for cards currently on the table
     while(temp > 0){
         uint8_t c = (uint8_t)__builtin_ctzll(temp);
@@ -212,17 +218,18 @@ static uint8_t collect_active_base_masks(uint64_t table_bb, uint8_t target_val, 
         uint16_t count = g_pivot_counts[idx];
         const uint64_t *masks = &g_pivot_subset_masks[g_pivot_offsets[idx]];
 
-        // 4-Way Loop Unrolling for ILP & Compiler Vectorization
+        // 4-Way SIMD Vectorization via GNU Vector Extensions (portable across architectures)
         uint16_t i = 0;
         for(; i + 3 < count; i += 4){
-            uint64_t m0 = masks[i + 0];
-            uint64_t m1 = masks[i + 1];
-            uint64_t m2 = masks[i + 2];
-            uint64_t m3 = masks[i + 3];
-            if((table_bb & m0) == m0 && found < max_out) out_masks[found++] = m0;
-            if((table_bb & m1) == m1 && found < max_out) out_masks[found++] = m1;
-            if((table_bb & m2) == m2 && found < max_out) out_masks[found++] = m2;
-            if((table_bb & m3) == m3 && found < max_out) out_masks[found++] = m3;
+            cte_v4di v_m = *(const cte_v4di*)&masks[i];
+            cte_v4di v_cmp = ((v_tbl & v_m) == v_m);
+            uint64_t any = v_cmp[0] | v_cmp[1] | v_cmp[2] | v_cmp[3];
+            if(__builtin_expect(any != 0, 0)){
+                if(v_cmp[0] && found < max_out) out_masks[found++] = masks[i + 0];
+                if(v_cmp[1] && found < max_out) out_masks[found++] = masks[i + 1];
+                if(v_cmp[2] && found < max_out) out_masks[found++] = masks[i + 2];
+                if(v_cmp[3] && found < max_out) out_masks[found++] = masks[i + 3];
+            }
         }
         for(; i < count; i++){
             uint64_t m = masks[i];
@@ -382,6 +389,7 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
     uint64_t active_by_val[15][64];
     uint8_t  active_count[15] = {0};
 
+    cte_v4di v_tbl = { table_bb, table_bb, table_bb, table_bb };
     uint64_t temp = table_bb;
     while(temp > 0){
         uint8_t c = (uint8_t)__builtin_ctzll(temp);
@@ -397,14 +405,15 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
 
             uint16_t i = 0;
             for(; i + 3 < count; i += 4){
-                uint64_t m0 = masks[i + 0];
-                uint64_t m1 = masks[i + 1];
-                uint64_t m2 = masks[i + 2];
-                uint64_t m3 = masks[i + 3];
-                if((table_bb & m0) == m0 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m0;
-                if((table_bb & m1) == m1 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m1;
-                if((table_bb & m2) == m2 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m2;
-                if((table_bb & m3) == m3 && active_count[v] < 64) active_by_val[v][active_count[v]++] = m3;
+                cte_v4di v_m = *(const cte_v4di*)&masks[i];
+                cte_v4di v_cmp = ((v_tbl & v_m) == v_m);
+                uint64_t any = v_cmp[0] | v_cmp[1] | v_cmp[2] | v_cmp[3];
+                if(__builtin_expect(any != 0, 0)){
+                    if(v_cmp[0] && active_count[v] < 64) active_by_val[v][active_count[v]++] = masks[i + 0];
+                    if(v_cmp[1] && active_count[v] < 64) active_by_val[v][active_count[v]++] = masks[i + 1];
+                    if(v_cmp[2] && active_count[v] < 64) active_by_val[v][active_count[v]++] = masks[i + 2];
+                    if(v_cmp[3] && active_count[v] < 64) active_by_val[v][active_count[v]++] = masks[i + 3];
+                }
             }
             for(; i < count; i++){
                 uint64_t m = masks[i];
