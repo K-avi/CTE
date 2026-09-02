@@ -75,14 +75,16 @@ void print_card(uint8_t card){
     printf("%s of %s\n", value_str[value-2], color_str[color]);
 }
 
-void print_table(const struct table *tbl){
-    if(!tbl) return;
-    printf("Cards on table (%u): \n", (unsigned)tbl->nb_cards_on_table);
-    for(uint8_t i = 0 ; i < tbl->nb_cards_on_table; i++){
-        uint8_t card = tbl->cards_on_table[i];
+void print_table(uint64_t table_bb){
+    uint8_t count = (uint8_t)__builtin_popcountll(table_bb);
+    printf("Cards on table (%u): \n", (unsigned)count);
+    uint64_t temp = table_bb;
+    while(temp > 0){
+        t_card card = (t_card)__builtin_ctzll(temp);
         uint8_t value = get_value(card);
         uint8_t color = get_color(card);
         printf("%s of %s\n", value_str[value-2], color_str[color]);
+        temp &= (temp - 1);
     }
     printf("\n");
 }

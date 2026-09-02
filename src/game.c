@@ -11,7 +11,7 @@ t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_
     game->last_captor_id = -1;
     game->current_player_id = 0;
     init_deck(&game->deck);
-    game->table.nb_cards_on_table = 0;
+    game->table_bb = 0;
 
     return init_players(&game->players, nb_players, names);
 }
@@ -38,10 +38,10 @@ t_cteerr setup_round(s_cte_game *game){
     }
 
     // Put 4 cards on the table
+    game->table_bb = 0;
     for(int i = 0; i < 4; i++){
-        game->table.cards_on_table[i] = game->deck.cards[12 + i];
+        game->table_bb |= (1ULL << game->deck.cards[12 + i]);
     }
-    game->table.nb_cards_on_table = 4;
     game->deck.cur_card = 16;
     game->last_captor_id = -1;
 
@@ -68,15 +68,18 @@ t_cteerr deal_next_hand(s_cte_game *game){
 t_cteerr award_remaining_table_cards(s_cte_game *game){
     if(!game) return e_null;
     if(game->last_captor_id < 0 || game->last_captor_id >= (int8_t)game->players.size) return e_inval_val;
-    if(game->table.nb_cards_on_table == 0) return e_ok;
+    if(game->table_bb == 0) return e_ok;
 
     struct s_cte_player_data *captor = &game->players.players[game->last_captor_id];
-    for(uint8_t i = 0; i < game->table.nb_cards_on_table; i++){
+    uint64_t temp = game->table_bb;
+    while(temp > 0){
+        t_card c = (t_card)__builtin_ctzll(temp);
         if(captor->won_cards.size < 52){
-            captor->won_cards.array[captor->won_cards.size++] = game->table.cards_on_table[i];
+            captor->won_cards.array[captor->won_cards.size++] = c;
         }
+        temp &= (temp - 1);
     }
-    game->table.nb_cards_on_table = 0;
+    game->table_bb = 0;
 
     return e_ok;
 }
@@ -129,11 +132,11 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
         err = init_move_list(&moves, 16);
         if(err != e_ok) return err;
 
-        err = gen_all_moves(&moves, &game->table, &game->players.players[current].hand);
+        err = gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
         if(err != e_ok){ free_move_list(&moves); return err; }
 
         s_cte_game_state state = {
-            .table             = &game->table,
+            .table_bb          = game->table_bb,
             .players           = &game->players,
             .current_player_id = current,
             .is_team_mode      = game->is_team_mode,
@@ -151,7 +154,7 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
 
         struct s_cte_move chosen_move = moves.moves[chosen_idx];
         bool captured = false;
-        err = play_move(&game->table, &chosen_move, &game->players.players[current], &captured);
+        err = play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
 
         if(config->callbacks && config->callbacks->on_move_played){
             config->callbacks->on_move_played(&game->players.players[current], &chosen_move, captured, config->ui_context);
@@ -166,7 +169,7 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
         game->current_player_id = current;
     }
 
-    if(game->table.nb_cards_on_table > 0 && game->last_captor_id >= 0){
+    if(game->table_bb > 0 && game->last_captor_id >= 0){
         err = award_remaining_table_cards(game);
         if(err != e_ok) return err;
     }

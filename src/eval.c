@@ -39,12 +39,11 @@ uint16_t eval_greedy(const s_cte_game_state *state,
     (void)ctx;
     if(!moves || moves->size == 0) return 0;
 
-    const uint8_t nb_cards = state->table->nb_cards_on_table;
     uint16_t cur_best = 0; 
-    s_cte_move_score best_score = score_move(&moves->moves[0], nb_cards);
+    s_cte_move_score best_score = score_move(&moves->moves[0], state->table_bb);
 
     for(uint16_t i = 1; i < moves->size; i++){
-        s_cte_move_score current_score = score_move(&moves->moves[i], nb_cards);
+        s_cte_move_score current_score = score_move(&moves->moves[i], state->table_bb);
         if(current_score.total_points > best_score.total_points){
             cur_best = i;
             best_score = current_score;

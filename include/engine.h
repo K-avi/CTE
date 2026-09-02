@@ -30,11 +30,11 @@ typedef struct s_cte_engine_backend {
     t_cteerr (*run_round)(s_cte_game *game, const s_cte_round_config *config);
 
     // Move generation, validation & scoring
-    t_cteerr (*is_legal)(bool *ret, const struct table *table, const struct s_cte_move *move);
-    t_cteerr (*gen_card_moves)(struct s_cte_move_list *moves, const struct table *table, t_card card);
-    t_cteerr (*gen_all_moves)(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand);
-    t_cteerr (*play_move)(struct table *table, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured);
-    s_cte_move_score (*score_move)(const struct s_cte_move *move, uint8_t nb_cards_on_table);
+    t_cteerr (*is_legal)(bool *ret, uint64_t table_bb, const struct s_cte_move *move);
+    t_cteerr (*gen_card_moves)(struct s_cte_move_list *moves, uint64_t table_bb, t_card card);
+    t_cteerr (*gen_all_moves)(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand);
+    t_cteerr (*play_move)(uint64_t *table_bb, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured);
+    s_cte_move_score (*score_move)(const struct s_cte_move *move, uint64_t table_bb);
 
     // Search snapshot conversion
     s_cte_pos (*to_pos)(const s_cte_game *game);

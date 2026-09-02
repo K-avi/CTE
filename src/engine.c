@@ -6,11 +6,11 @@ static s_cte_pos backend_array_to_pos(const s_cte_game *game){
         return empty;
     }
     s_cte_game_state st = {
-        .table = &game->table,
-        .players = &game->players,
-        .deck = &game->deck,
+        .table_bb          = game->table_bb,
+        .players           = &game->players,
+        .deck              = &game->deck,
         .current_player_id = game->current_player_id,
-        .is_team_mode = game->is_team_mode,
+        .is_team_mode      = game->is_team_mode,
     };
     return pos_from_state(&st);
 }

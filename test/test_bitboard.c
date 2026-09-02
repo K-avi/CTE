@@ -104,23 +104,16 @@ int main(){
     // BT2: Prises Triples & As à double valeur (3 Backends)
     // -------------------------------------------------------------
     printf("[BT2] Validating critical tactical scenarios across all 3 backends...\n");
-    struct table tbl;
-    tbl.nb_cards_on_table = 6;
-    tbl.cards_on_table[0] = 11; // Dame (13)
-    tbl.cards_on_table[1] = 9;  // As (1)
-    tbl.cards_on_table[2] = 6;  // 8 (8)
-    tbl.cards_on_table[3] = 4;  // 6 (6)
-    tbl.cards_on_table[4] = 7;  // 9 (9)
-    tbl.cards_on_table[5] = 3;  // 5 (5)
+    uint64_t table_bb = (1ULL << 11) | (1ULL << 9) | (1ULL << 6) | (1ULL << 4) | (1ULL << 7) | (1ULL << 3);
 
     struct s_cte_move_list moves_arr, moves_bb, moves_tbl;
     init_move_list(&moves_arr, 16);
     init_move_list(&moves_bb, 16);
     init_move_list(&moves_tbl, 16);
 
-    be_arr->gen_card_moves(&moves_arr, &tbl, 12);
-    be_bb->gen_card_moves(&moves_bb, &tbl, 12);
-    be_tbl->gen_card_moves(&moves_tbl, &tbl, 12);
+    be_arr->gen_card_moves(&moves_arr, table_bb, 12);
+    be_bb->gen_card_moves(&moves_bb, table_bb, 12);
+    be_tbl->gen_card_moves(&moves_tbl, table_bb, 12);
 
     assert(are_move_lists_identical(&moves_arr, &moves_bb));
     assert(are_move_lists_identical(&moves_arr, &moves_tbl));
@@ -133,8 +126,8 @@ int main(){
     // -------------------------------------------------------------
     // BT3 & BT4: Differential Fuzzing 3-Voies (10 000 positions)
     // -------------------------------------------------------------
-    printf("[BT3 & BT4] Running 3-Way Differential Fuzzing (10,000 random board configurations)...\n");
-    srand(133742);
+    printf("[BT3 & BT4] Running 3-Way Differential Fuzzing (10,000 positions)...\n");
+    srand(12345);
 
     uint32_t total_tested_moves = 0;
     for(uint32_t iter = 0; iter < 10000; iter++){
@@ -150,10 +143,9 @@ int main(){
         uint8_t table_sz = (uint8_t)(rand() % 11);
         uint8_t hand_sz  = (uint8_t)(1 + (rand() % 6));
 
-        struct table rand_table;
-        rand_table.nb_cards_on_table = table_sz;
+        uint64_t table_bb_rand = 0;
         for(uint8_t i = 0; i < table_sz; i++){
-            rand_table.cards_on_table[i] = deck_shuff[i];
+            table_bb_rand |= (1ULL << deck_shuff[i]);
         }
 
         struct s_cte_hand rand_hand;
@@ -166,19 +158,19 @@ int main(){
         init_move_list(&moves_bb, 16);
         init_move_list(&moves_tbl, 16);
 
-        be_arr->gen_all_moves(&moves_arr, &rand_table, &rand_hand);
-        be_bb->gen_all_moves(&moves_bb, &rand_table, &rand_hand);
-        be_tbl->gen_all_moves(&moves_tbl, &rand_table, &rand_hand);
+        be_arr->gen_all_moves(&moves_arr, table_bb_rand, &rand_hand);
+        be_bb->gen_all_moves(&moves_bb, table_bb_rand, &rand_hand);
+        be_tbl->gen_all_moves(&moves_tbl, table_bb_rand, &rand_hand);
 
         // 1. Zéro faux positif
         for(uint16_t m = 0; m < moves_bb.size; m++){
             bool is_leg = false;
-            t_cteerr err_leg = is_legal(&is_leg, &rand_table, &moves_bb.moves[m]);
+            t_cteerr err_leg = is_legal(&is_leg, table_bb_rand, &moves_bb.moves[m]);
             assert(err_leg == e_ok && is_leg == true);
         }
         for(uint16_t m = 0; m < moves_tbl.size; m++){
             bool is_leg = false;
-            t_cteerr err_leg = is_legal(&is_leg, &rand_table, &moves_tbl.moves[m]);
+            t_cteerr err_leg = is_legal(&is_leg, table_bb_rand, &moves_tbl.moves[m]);
             assert(err_leg == e_ok && is_leg == true);
         }
 
@@ -223,7 +215,7 @@ int main(){
         t_cteerr err = be_tbl->run_round(&game_fuzz, &r_cfg);
         assert(err == e_ok);
         assert(game_fuzz.deck.cur_card == 52);
-        assert(game_fuzz.table.nb_cards_on_table == 0);
+        assert(game_fuzz.table_bb == 0);
 
         uint8_t total_c = 0;
         uint8_t total_pts = 0;
@@ -256,11 +248,8 @@ int main(){
         uint8_t table_sz = (uint8_t)(rand() % 11);
         uint8_t hand_sz  = (uint8_t)(1 + (rand() % 6));
 
-        struct table rand_table;
-        rand_table.nb_cards_on_table = table_sz;
         uint64_t table_bb = 0;
         for(uint8_t i = 0; i < table_sz; i++){
-            rand_table.cards_on_table[i] = deck_shuff[i];
             table_bb |= (1ULL << deck_shuff[i]);
         }
 
@@ -271,7 +260,7 @@ int main(){
         }
 
         init_move_list(&moves_arr, 16);
-        be_arr->gen_all_moves(&moves_arr, &rand_table, &rand_hand);
+        be_arr->gen_all_moves(&moves_arr, table_bb, &rand_hand);
 
         s_cte_bitboard_move_list compact_list;
         bitboard_gen_all_compact_moves(&compact_list, table_bb, &rand_hand);
@@ -314,11 +303,8 @@ int main(){
         uint8_t table_sz = (uint8_t)(rand() % 11);
         uint8_t hand_sz  = (uint8_t)(1 + (rand() % 6));
 
-        struct table rand_table;
-        rand_table.nb_cards_on_table = table_sz;
         uint64_t table_bb = 0;
         for(uint8_t i = 0; i < table_sz; i++){
-            rand_table.cards_on_table[i] = deck_shuff[i];
             table_bb |= (1ULL << deck_shuff[i]);
         }
 
@@ -329,7 +315,7 @@ int main(){
         }
 
         init_move_list(&moves_arr, 16);
-        be_arr->gen_all_moves(&moves_arr, &rand_table, &rand_hand);
+        be_arr->gen_all_moves(&moves_arr, table_bb, &rand_hand);
 
         s_cte_bitboard_move_list compact_tbl;
         bitboard_gen_all_compact_moves_table(&compact_tbl, table_bb, &rand_hand);
@@ -374,11 +360,8 @@ int main(){
         uint8_t table_sz = (uint8_t)(rand() % 11);
         uint8_t hand_sz  = (uint8_t)(1 + (rand() % 6));
 
-        struct table rand_table;
-        rand_table.nb_cards_on_table = table_sz;
         uint64_t table_bb = 0;
         for(uint8_t i = 0; i < table_sz; i++){
-            rand_table.cards_on_table[i] = deck_shuff[i];
             table_bb |= (1ULL << deck_shuff[i]);
         }
 
@@ -389,7 +372,7 @@ int main(){
         }
 
         init_move_list(&moves_arr, 16);
-        be_arr->gen_all_moves(&moves_arr, &rand_table, &rand_hand);
+        be_arr->gen_all_moves(&moves_arr, table_bb, &rand_hand);
 
         s_cte_bitboard_move_list compact_rnk;
         bitboard_gen_all_compact_moves_rank(&compact_rnk, table_bb, &rand_hand);

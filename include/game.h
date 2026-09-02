@@ -9,7 +9,7 @@
 // Reentrant game structure containing all state
 typedef struct s_cte_game {
     struct deck          deck;               // Sabot de 52 cartes
-    struct table         table;              // Table active (0..52 cartes)
+    uint64_t             table_bb;           // 64-bit mask des cartes actives sur la table
     struct s_cte_players players;            // Joueurs, mains et cartes remportées
     int8_t               last_captor_id;     // Dernier joueur ayant fait une prise (-1 si aucun)
     uint8_t              current_player_id;  // Joueur actif (0..players.size-1)

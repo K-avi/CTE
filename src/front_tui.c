@@ -109,19 +109,21 @@ static void render_tui_board(const s_cte_game_state *state,
     int table_y = 4 + state->players->size;
 
     // 3. Table Box
+    uint8_t table_count = (uint8_t)__builtin_popcountll(state->table_bb);
     attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
-    mvprintw(table_y, 2, "=== TABLE (%u cards) ===", (unsigned)state->table->nb_cards_on_table);
+    mvprintw(table_y, 2, "=== TABLE (%u cards) ===", (unsigned)table_count);
     attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
 
     // Find which table cards are targeted by currently selected move
     const struct s_cte_move *sel_move = (moves && selected_move_idx < moves->size) ? &moves->moves[selected_move_idx] : NULL;
 
-    if(state->table->nb_cards_on_table == 0){
+    if(table_count == 0){
         mvprintw(table_y + 1, 4, "(empty table)");
     } else {
         int cx = 4;
-        for(uint8_t i = 0; i < state->table->nb_cards_on_table; i++){
-            t_card c = state->table->cards_on_table[i];
+        uint64_t temp = state->table_bb;
+        while(temp > 0){
+            t_card c = (t_card)__builtin_ctzll(temp);
             bool is_picked = false;
             if(sel_move){
                 for(uint8_t k = 0; k < sel_move->cards_picked.size; k++){
@@ -133,6 +135,7 @@ static void render_tui_board(const s_cte_game_state *state,
             }
             print_colored_card(table_y + 1, cx, c, style, is_picked);
             cx += 8;
+            temp &= (temp - 1);
         }
     }
 
@@ -169,7 +172,7 @@ static void render_tui_board(const s_cte_game_state *state,
             char move_str[128];
             format_move(move_str, sizeof(move_str), &moves->moves[idx], style);
 
-            s_cte_move_score sc = score_move(&moves->moves[idx], state->table->nb_cards_on_table);
+            s_cte_move_score sc = score_move(&moves->moves[idx], state->table_bb);
             char score_info[64] = "";
             if(moves->moves[idx].cards_picked.size > 0){
                 snprintf(score_info, sizeof(score_info), " -> +%u pt%s (%u cards)%s",

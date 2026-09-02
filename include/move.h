@@ -28,12 +28,12 @@ t_cteerr init_move_list(struct s_cte_move_list *list, uint16_t initial_cap);
 void free_move(struct s_cte_move *move);
 void free_move_list(struct s_cte_move_list *list);
 
-// Move validation, generation & execution (reentrant, takes const struct table*)
+// Move validation, generation & execution (reentrant, takes uint64_t table_bb)
 bool is_exact_partition(const uint8_t *cards, uint8_t n, uint8_t target_val);
-t_cteerr is_legal(bool *ret, const struct table *table, const struct s_cte_move *move);
-t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table, t_card card);
-t_cteerr gen_all_moves(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand);
-t_cteerr play_move(struct table *table, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured);
+t_cteerr is_legal(bool *ret, uint64_t table_bb, const struct s_cte_move *move);
+t_cteerr gen_card_moves(struct s_cte_move_list *moves, uint64_t table_bb, t_card card);
+t_cteerr gen_all_moves(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand);
+t_cteerr play_move(uint64_t *table_bb, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured);
 
 // Move scoring (pure evaluation, decoupled from state update)
 typedef struct {
@@ -43,7 +43,7 @@ typedef struct {
     uint8_t total_points;  // card_points + (is_tablic ? 1 : 0)
 } s_cte_move_score;
 
-s_cte_move_score score_move(const struct s_cte_move *move, uint8_t nb_cards_on_table);
+s_cte_move_score score_move(const struct s_cte_move *move, uint64_t table_bb);
 
 // Move formatting & printing
 void format_move(char *buf, size_t buf_size, const struct s_cte_move *move, e_cte_render_style style);

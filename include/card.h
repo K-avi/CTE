@@ -46,11 +46,6 @@ struct deck {
     t_card cards[52];
 };
 
-struct table {
-    uint8_t nb_cards_on_table;
-    t_card cards_on_table[52];
-};
-
 // Card render styles
 typedef enum {
     CTE_RENDER_UNICODE = 0,
@@ -64,6 +59,6 @@ void shuffle_deck(struct deck *d);
 // Formatting and printing functions
 void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style style);
 void print_card(uint8_t card);
-void print_table(const struct table *tbl);
+void print_table(uint64_t table_bb);
 
 #endif

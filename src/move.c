@@ -114,7 +114,7 @@ bool is_exact_partition(const uint8_t *cards, uint8_t n, uint8_t target_val){
     return can_partition_rec(num_masks - 1, valid_base, memo);
 }
 
-t_cteerr is_legal(bool *ret, const struct table *table, const struct s_cte_move *move){
+t_cteerr is_legal(bool *ret, uint64_t table_bb, const struct s_cte_move *move){
     if(!ret || !move) return e_null;
     *ret = false;
 
@@ -126,17 +126,15 @@ t_cteerr is_legal(bool *ret, const struct table *table, const struct s_cte_move 
     uint8_t n = move->cards_picked.size;
     const uint8_t *cards = move->cards_picked.array;
 
-    // If table is provided, verify cards exist on table
-    if(table){
+    // Verify all picked cards are present on the table (if table_bb is specified)
+    if(table_bb != 0){
+        uint64_t capture_mask = 0;
         for(uint8_t i = 0; i < n; i++){
-            bool found = false;
-            for(uint8_t j = 0; j < table->nb_cards_on_table; j++){
-                if(table->cards_on_table[j] == cards[i]){
-                    found = true;
-                    break;
-                }
-            }
-            if(!found) return e_ok; // Not legal because card not on table
+            if(cards[i] >= 52) return e_inval_val;
+            capture_mask |= (1ULL << cards[i]);
+        }
+        if((table_bb & capture_mask) != capture_mask){
+            return e_ok; // Not legal because cards not on table
         }
     }
 
@@ -172,7 +170,7 @@ static void find_valid_capture_masks(const uint8_t *table_cards, uint8_t n, uint
     }
 }
 
-t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table, t_card card){
+t_cteerr gen_card_moves(struct s_cte_move_list *moves, uint64_t table_bb, t_card card){
     if(!moves) return e_null;
     if(!moves->moves && moves->max == 0){
         t_cteerr err = init_move_list(moves, 16);
@@ -186,21 +184,28 @@ t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table
     t_cteerr err = move_list_push(moves, &drop_move);
     if(err != e_ok) return err;
 
-    if(!table) return e_ok;
-    uint8_t n = table->nb_cards_on_table;
+    if(table_bb == 0) return e_ok;
+
+    // Extract table cards to local stack buffer for the exact partition solver
+    t_card table_cards[16];
+    uint8_t n = 0;
+    uint64_t temp = table_bb;
+    while(temp > 0 && n < 16){
+        table_cards[n++] = (t_card)__builtin_ctzll(temp);
+        temp &= (temp - 1);
+    }
     if(n == 0) return e_ok;
-    if(n > 16) n = 16;
 
     uint32_t num_masks = 1u << n;
     uint8_t *is_valid_capture = calloc(num_masks, sizeof(uint8_t));
     if(!is_valid_capture) return e_alloc;
 
     if(is_ace(card)){
-        find_valid_capture_masks(table->cards_on_table, n, 11, is_valid_capture);
-        find_valid_capture_masks(table->cards_on_table, n, 1, is_valid_capture);
+        find_valid_capture_masks(table_cards, n, 11, is_valid_capture);
+        find_valid_capture_masks(table_cards, n, 1, is_valid_capture);
     } else {
         uint8_t val = get_value(card);
-        find_valid_capture_masks(table->cards_on_table, n, val, is_valid_capture);
+        find_valid_capture_masks(table_cards, n, val, is_valid_capture);
     }
 
     for(uint32_t m = 1; m < num_masks; m++){
@@ -217,7 +222,7 @@ t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table
             uint8_t idx = 0;
             for(uint8_t i = 0; i < n; i++){
                 if(m & (1u << i)){
-                    move.cards_picked.array[idx++] = table->cards_on_table[i];
+                    move.cards_picked.array[idx++] = table_cards[i];
                 }
             }
 
@@ -233,21 +238,21 @@ t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table
     return e_ok;
 }
 
-t_cteerr gen_all_moves(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
+t_cteerr gen_all_moves(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand){
     if(!moves || !hand) return e_null;
     if(!moves->moves && moves->max == 0){
         t_cteerr err = init_move_list(moves, 32);
         if(err != e_ok) return err;
     }
     for(uint8_t i = 0 ; i < hand->size; i++){
-        t_cteerr err = gen_card_moves(moves, table, hand->array[i]);
+        t_cteerr err = gen_card_moves(moves, table_bb, hand->array[i]);
         if(err != e_ok) return err;
     }
     return e_ok;
 }
 
-t_cteerr play_move(struct table *table, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured){
-    if(!table || !move || !player) return e_null;
+t_cteerr play_move(uint64_t *table_bb, const struct s_cte_move *move, struct s_cte_player_data *player, bool *captured){
+    if(!table_bb || !move || !player) return e_null;
 
     // 1. Remove card_played from player hand
     int hand_idx = -1;
@@ -266,8 +271,7 @@ t_cteerr play_move(struct table *table, const struct s_cte_move *move, struct s_
 
     // 2. Drop move
     if(move->cards_picked.size == 0){
-        if(table->nb_cards_on_table >= 52) return e_inval_val;
-        table->cards_on_table[table->nb_cards_on_table++] = move->card_played;
+        *table_bb |= (1ULL << move->card_played);
         if(captured) *captured = false;
         return e_ok;
     }
@@ -275,39 +279,31 @@ t_cteerr play_move(struct table *table, const struct s_cte_move *move, struct s_
     // 3. Capture move
     if(captured) *captured = true;
 
+    uint64_t capture_mask = 0;
     for(uint8_t i = 0; i < move->cards_picked.size; i++){
         uint8_t target = move->cards_picked.array[i];
-        int table_idx = -1;
-        for(uint8_t j = 0; j < table->nb_cards_on_table; j++){
-            if(table->cards_on_table[j] == target){
-                table_idx = j;
-                break;
-            }
-        }
-        if(table_idx == -1) return e_inval_val;
-
-        for(uint8_t j = table_idx; j + 1 < table->nb_cards_on_table; j++){
-            table->cards_on_table[j] = table->cards_on_table[j+1];
-        }
-        table->nb_cards_on_table--;
-
+        if(target >= 52) return e_inval_val;
+        capture_mask |= (1ULL << target);
         if(player->won_cards.size < 52){
             player->won_cards.array[player->won_cards.size++] = target;
         }
     }
 
+    if((*table_bb & capture_mask) != capture_mask) return e_inval_val;
+    *table_bb &= ~capture_mask; // 1-cycle bitwise card removal!
+
     if(player->won_cards.size < 52){
         player->won_cards.array[player->won_cards.size++] = move->card_played;
     }
 
-    if(table->nb_cards_on_table == 0){
+    if(*table_bb == 0){
         player->nb_tablic++;
     }
 
     return e_ok;
 }
 
-s_cte_move_score score_move(const struct s_cte_move *move, uint8_t nb_cards_on_table){
+s_cte_move_score score_move(const struct s_cte_move *move, uint64_t table_bb){
     s_cte_move_score res = {0};
     if(!move) return res;
 
@@ -316,12 +312,15 @@ s_cte_move_score score_move(const struct s_cte_move *move, uint8_t nb_cards_on_t
     }
 
     res.card_points = get_points(move->card_played);
+    uint64_t capture_mask = 0;
     for(uint8_t i = 0; i < move->cards_picked.size; i++){
-        res.card_points += get_points(move->cards_picked.array[i]);
+        t_card c = move->cards_picked.array[i];
+        res.card_points += get_points(c);
+        if(c < 52) capture_mask |= (1ULL << c);
     }
     res.nb_cards = (uint8_t)(1 + move->cards_picked.size);
 
-    if(nb_cards_on_table > 0 && move->cards_picked.size == nb_cards_on_table){
+    if(table_bb > 0 && capture_mask == table_bb){
         res.is_tablic = true;
     }
 

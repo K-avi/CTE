@@ -39,7 +39,7 @@ int main(){
                 continue;
             }
 
-            uint8_t cur_sz = game.table.nb_cards_on_table;
+            uint8_t cur_sz = (uint8_t)__builtin_popcountll(game.table_bb);
             total_table_cards += cur_sz;
             total_turns++;
             size_histogram[cur_sz]++;
@@ -47,12 +47,12 @@ int main(){
 
             struct s_cte_move_list moves;
             init_move_list(&moves, 16);
-            gen_all_moves(&moves, &game.table, &game.players.players[cur_p].hand);
+            gen_all_moves(&moves, game.table_bb, &game.players.players[cur_p].hand);
 
-            s_cte_game_state st = { .table = &game.table, .players = &game.players, .deck = &game.deck, .current_player_id = cur_p };
+            s_cte_game_state st = { .table_bb = game.table_bb, .players = &game.players, .deck = &game.deck, .current_player_id = cur_p };
             uint16_t chosen = eval_greedy(&st, &moves, NULL);
             bool cap = false;
-            play_move(&game.table, &moves.moves[chosen], &game.players.players[cur_p], &cap);
+            play_move(&game.table_bb, &moves.moves[chosen], &game.players.players[cur_p], &cap);
             if(cap) game.last_captor_id = cur_p;
             free_move_list(&moves);
 

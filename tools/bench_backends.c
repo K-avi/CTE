@@ -17,7 +17,7 @@ int main(){
     const uint32_t NUM_SAMPLES = 200000;
     srand(1337);
 
-    struct table *tables = malloc(sizeof(struct table) * NUM_SAMPLES);
+    uint64_t *table_bbs = malloc(sizeof(uint64_t) * NUM_SAMPLES);
     struct s_cte_hand *hands = malloc(sizeof(struct s_cte_hand) * NUM_SAMPLES);
 
     for(uint32_t i = 0; i < NUM_SAMPLES; i++){
@@ -31,8 +31,8 @@ int main(){
         }
 
         uint8_t t_sz = rand() % 6; 
-        tables[i].nb_cards_on_table = t_sz;
-        for(uint8_t j = 0; j < t_sz; j++) tables[i].cards_on_table[j] = deck[j];
+        table_bbs[i] = 0;
+        for(uint8_t j = 0; j < t_sz; j++) table_bbs[i] |= (1ULL << deck[j]);
 
         uint8_t h_sz = 1 + (rand() % 6);
         hands[i].size = h_sz;
@@ -47,7 +47,7 @@ int main(){
     uint64_t moves_arr_cnt = 0;
     for(uint32_t i = 0; i < NUM_SAMPLES; i++){
         moves.size = 0;
-        be_arr->gen_all_moves(&moves, &tables[i], &hands[i]);
+        be_arr->gen_all_moves(&moves, table_bbs[i], &hands[i]);
         moves_arr_cnt += moves.size;
         for(uint16_t m = 0; m < moves.size; m++) free_move(&moves.moves[m]);
     }
@@ -59,7 +59,7 @@ int main(){
     uint64_t moves_dyn_cnt = 0;
     for(uint32_t i = 0; i < NUM_SAMPLES; i++){
         moves.size = 0;
-        be_dyn->gen_all_moves(&moves, &tables[i], &hands[i]);
+        be_dyn->gen_all_moves(&moves, table_bbs[i], &hands[i]);
         moves_dyn_cnt += moves.size;
         for(uint16_t m = 0; m < moves.size; m++) free_move(&moves.moves[m]);
     }
@@ -71,7 +71,7 @@ int main(){
     uint64_t moves_tbl_cnt = 0;
     for(uint32_t i = 0; i < NUM_SAMPLES; i++){
         moves.size = 0;
-        be_tbl->gen_all_moves(&moves, &tables[i], &hands[i]);
+        be_tbl->gen_all_moves(&moves, table_bbs[i], &hands[i]);
         moves_tbl_cnt += moves.size;
         for(uint16_t m = 0; m < moves.size; m++) free_move(&moves.moves[m]);
     }
@@ -79,13 +79,6 @@ int main(){
     double time_tbl = (double)(t5 - t4) / CLOCKS_PER_SEC;
 
     // 4. Bitboard 1-Pass Compact Dynamic (Carry-Rippler, 100% stack)
-    uint64_t *table_bbs = malloc(sizeof(uint64_t) * NUM_SAMPLES);
-    for(uint32_t i = 0; i < NUM_SAMPLES; i++){
-        table_bbs[i] = 0;
-        for(uint8_t j = 0; j < tables[i].nb_cards_on_table; j++){
-            table_bbs[i] |= (1ULL << tables[i].cards_on_table[j]);
-        }
-    }
 
     clock_t t6 = clock();
     uint64_t moves_cpt_dyn = 0;
@@ -120,7 +113,6 @@ int main(){
     double time_cpt_rnk = (double)(t11 - t10) / CLOCKS_PER_SEC;
 
     free_move_list(&moves);
-    free(tables);
     free(hands);
     free(table_bbs);
 

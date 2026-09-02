@@ -36,14 +36,18 @@ static void cli_on_turn_start(const s_cte_game_state *state, const struct s_cte_
     }
     printf("-------------------------------------------------------\n");
 
-    printf(" [Table (%u cards)] : ", (unsigned)state->table->nb_cards_on_table);
-    if(state->table->nb_cards_on_table == 0){
+    uint8_t table_count = (uint8_t)__builtin_popcountll(state->table_bb);
+    printf(" [Table (%u cards)] : ", (unsigned)table_count);
+    if(table_count == 0){
         printf("(empty)\n");
     } else {
-        for(uint8_t i = 0; i < state->table->nb_cards_on_table; i++){
+        uint64_t temp = state->table_bb;
+        while(temp > 0){
+            t_card c = (t_card)__builtin_ctzll(temp);
             char card_str[16];
-            format_card(card_str, sizeof(card_str), state->table->cards_on_table[i], style);
+            format_card(card_str, sizeof(card_str), c, style);
             printf("%s ", card_str);
+            temp &= (temp - 1);
         }
         printf("\n");
     }

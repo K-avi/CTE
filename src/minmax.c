@@ -12,12 +12,7 @@ s_cte_pos pos_from_state(const s_cte_game_state *state){
     memset(&res, 0, sizeof(res));
     if(!state) return res;
 
-    if(state->table){
-        for(uint8_t i = 0; i < state->table->nb_cards_on_table; i++){
-            t_card c = state->table->cards_on_table[i];
-            if(c < 52) res.table_bb |= (1ULL << c);
-        }
-    }
+    res.table_bb = state->table_bb;
 
     res.nb_players = (state->players && state->players->size <= 4) ? state->players->size : 2;
     res.current_player = state->current_player_id;

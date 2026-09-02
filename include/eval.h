@@ -20,7 +20,7 @@ typedef enum {
 
 // Snapshot of game state passed to evaluators
 typedef struct s_cte_game_state {
-    const struct table         *table;
+    uint64_t                    table_bb;
     const struct s_cte_players *players;
     const struct deck          *deck;
     uint8_t                     current_player_id;

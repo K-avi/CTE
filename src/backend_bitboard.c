@@ -12,11 +12,7 @@ void bitboard_from_game(s_cte_bitboard_state *bb_state, const s_cte_game *game){
     if(!bb_state || !game) return;
     memset(bb_state, 0, sizeof(s_cte_bitboard_state));
 
-    bb_state->table_bb = 0;
-    for(uint8_t i = 0; i < game->table.nb_cards_on_table; i++){
-        t_card c = game->table.cards_on_table[i];
-        if(c < 52) bb_state->table_bb |= (1ULL << c);
-    }
+    bb_state->table_bb = game->table_bb;
 
     bb_state->nb_players = game->players.size;
     bb_state->is_team_mode = game->is_team_mode;
@@ -504,78 +500,17 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
     }
 }
 
-static t_cteerr bitboard_adapter_gen_card_moves_dyn(struct s_cte_move_list *moves, const struct table *table, t_card card){
-    if(!moves) return e_null;
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-    return bitboard_gen_card_moves_dynamic(moves, table_bb, card);
-}
-
-static t_cteerr bitboard_adapter_gen_all_moves_dyn(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
-    if(!moves || !hand) return e_null;
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-    return bitboard_gen_all_moves_dynamic(moves, table_bb, hand);
-}
-
-static t_cteerr bitboard_adapter_gen_card_moves_tbl(struct s_cte_move_list *moves, const struct table *table, t_card card){
-    if(!moves) return e_null;
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-    return bitboard_gen_card_moves_table(moves, table_bb, card);
-}
-
-static t_cteerr bitboard_adapter_gen_all_moves_tbl(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
-    if(!moves || !hand) return e_null;
-    if(!moves->moves && moves->max == 0){
-        t_cteerr err = init_move_list(moves, 32);
-        if(err != e_ok) return err;
-    }
-
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-
-    s_cte_bitboard_move_list cpt;
-    bitboard_gen_all_compact_moves_table(&cpt, table_bb, hand);
-
-    for(uint16_t i = 0; i < cpt.size; i++){
-        t_cteerr err = bitboard_push_move(moves, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-        if(err != e_ok) return err;
-    }
-    return e_ok;
-}
-
-static s_cte_pos bitboard_adapter_to_pos(const s_cte_game *game){
+static s_cte_pos bitboard_backend_to_pos(const s_cte_game *game){
     if(!game){
         s_cte_pos empty = {0};
         return empty;
     }
     s_cte_game_state st = {
-        .table = &game->table,
-        .players = &game->players,
-        .deck = &game->deck,
+        .table_bb          = game->table_bb,
+        .players           = &game->players,
+        .deck              = &game->deck,
         .current_player_id = game->current_player_id,
-        .is_team_mode = game->is_team_mode,
+        .is_team_mode      = game->is_team_mode,
     };
     return pos_from_state(&st);
 }
@@ -590,11 +525,11 @@ const s_cte_engine_backend g_backend_bitboard = {
     .award_remaining = award_remaining_table_cards,
     .run_round       = run_round,
     .is_legal        = is_legal,
-    .gen_card_moves  = bitboard_adapter_gen_card_moves_dyn,
-    .gen_all_moves   = bitboard_adapter_gen_all_moves_dyn,
+    .gen_card_moves  = bitboard_gen_card_moves_dynamic,
+    .gen_all_moves   = bitboard_gen_all_moves_dynamic,
     .play_move       = play_move,
     .score_move      = score_move,
-    .to_pos          = bitboard_adapter_to_pos,
+    .to_pos          = bitboard_backend_to_pos,
 };
 
 const s_cte_engine_backend g_backend_bitboard_table = {
@@ -607,11 +542,11 @@ const s_cte_engine_backend g_backend_bitboard_table = {
     .award_remaining = award_remaining_table_cards,
     .run_round       = run_round,
     .is_legal        = is_legal,
-    .gen_card_moves  = bitboard_adapter_gen_card_moves_tbl,
-    .gen_all_moves   = bitboard_adapter_gen_all_moves_tbl,
+    .gen_card_moves  = bitboard_gen_card_moves_table,
+    .gen_all_moves   = bitboard_gen_all_moves_table,
     .play_move       = play_move,
     .score_move      = score_move,
-    .to_pos          = bitboard_adapter_to_pos,
+    .to_pos          = bitboard_backend_to_pos,
 };
 
 // ============================================================================
@@ -888,30 +823,6 @@ t_cteerr bitboard_gen_all_moves_rank(struct s_cte_move_list *moves, uint64_t tab
     return e_ok;
 }
 
-static t_cteerr bitboard_adapter_gen_card_moves_rnk(struct s_cte_move_list *moves, const struct table *table, t_card card){
-    if(!moves) return e_null;
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-    return bitboard_gen_card_moves_rank(moves, table_bb, card);
-}
-
-static t_cteerr bitboard_adapter_gen_all_moves_rnk(struct s_cte_move_list *moves, const struct table *table, const struct s_cte_hand *hand){
-    if(!moves || !hand) return e_null;
-    uint64_t table_bb = 0;
-    if(table){
-        for(uint8_t i = 0; i < table->nb_cards_on_table; i++){
-            t_card c = table->cards_on_table[i];
-            if(c < 52) table_bb |= (1ULL << c);
-        }
-    }
-    return bitboard_gen_all_moves_rank(moves, table_bb, hand);
-}
-
 const s_cte_engine_backend g_backend_bitboard_rank = {
     .type            = CTE_BACKEND_BITBOARD_RANK,
     .name            = "Bitboard SWAR Rank Patterns (7.1 KB RAM)",
@@ -922,10 +833,10 @@ const s_cte_engine_backend g_backend_bitboard_rank = {
     .award_remaining = award_remaining_table_cards,
     .run_round       = run_round,
     .is_legal        = is_legal,
-    .gen_card_moves  = bitboard_adapter_gen_card_moves_rnk,
-    .gen_all_moves   = bitboard_adapter_gen_all_moves_rnk,
+    .gen_card_moves  = bitboard_gen_card_moves_rank,
+    .gen_all_moves   = bitboard_gen_all_moves_rank,
     .play_move       = play_move,
     .score_move      = score_move,
-    .to_pos          = bitboard_adapter_to_pos,
+    .to_pos          = bitboard_backend_to_pos,
 };
 
