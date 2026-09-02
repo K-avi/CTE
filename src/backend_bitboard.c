@@ -414,63 +414,80 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
         temp &= (temp - 1); // BMI2 BLSR
     }
 
-    // 4. Precompute disjoint combinations for each unique value
-    uint64_t cap_by_val[15][256];
-    uint16_t cap_count[15] = {0};
-    bool     cap_computed[15] = {0};
-    uint64_t bloom_by_val[15][4] = {{0}};
+    // 4. Precompute disjoint combinations for values in hand (dense 8 slots max)
+    uint64_t cap_by_slot[8][256];
+    uint16_t cap_count[8] = {0};
+    uint64_t bloom_by_slot[8][4] = {{0}};
+    int8_t   val_to_slot[15];
+    memset(val_to_slot, -1, sizeof(val_to_slot));
+    uint8_t  num_slots = 0;
 
     for(uint8_t h = 0; h < hand->size; h++){
         t_card card = hand->array[h];
         bool ace = is_ace(card);
 
         if(ace){
-            if(!cap_computed[11]){
+            int8_t s11 = val_to_slot[11];
+            if(s11 == -1 && num_slots < 8){
+                s11 = (int8_t)(num_slots++);
+                val_to_slot[11] = s11;
                 if(active_count[11] > 0){
-                    combine_disjoint_masks(0, 0, active_count[11], active_by_val[11], cap_by_val[11], &cap_count[11], 256, bloom_by_val[11]);
+                    combine_disjoint_masks(0, 0, active_count[11], active_by_val[11],
+                                           cap_by_slot[s11], &cap_count[s11], 256, bloom_by_slot[s11]);
                 }
-                cap_computed[11] = true;
             }
-            for(uint16_t k = 0; k < cap_count[11]; k++){
-                if(out_list->size < 1024){
-                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_val[11][k] };
+            if(s11 >= 0){
+                for(uint16_t k = 0; k < cap_count[s11]; k++){
+                    if(out_list->size < 1024){
+                        out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_slot[s11][k] };
+                    }
                 }
             }
 
             // Ace as 1 (only add masks not already added by Ace as 11)
-            if(!cap_computed[1]){
+            int8_t s1 = val_to_slot[1];
+            if(s1 == -1 && num_slots < 8){
+                s1 = (int8_t)(num_slots++);
+                val_to_slot[1] = s1;
                 if(active_count[1] > 0){
-                    combine_disjoint_masks(0, 0, active_count[1], active_by_val[1], cap_by_val[1], &cap_count[1], 256, bloom_by_val[1]);
+                    combine_disjoint_masks(0, 0, active_count[1], active_by_val[1],
+                                           cap_by_slot[s1], &cap_count[s1], 256, bloom_by_slot[s1]);
                 }
-                cap_computed[1] = true;
             }
-            for(uint16_t k = 0; k < cap_count[1]; k++){
-                uint64_t m1 = cap_by_val[1][k];
-                uint8_t h1 = (uint8_t)(((m1) ^ (m1 >> 11) ^ (m1 >> 23)) & 255);
-                bool already = false;
-                if((bloom_by_val[11][h1 >> 6] & (1ULL << (h1 & 63))) != 0){
-                    for(uint16_t j = 0; j < cap_count[11]; j++){
-                        if(cap_by_val[11][j] == m1){
-                            already = true;
-                            break;
+            if(s1 >= 0){
+                for(uint16_t k = 0; k < cap_count[s1]; k++){
+                    uint64_t m1 = cap_by_slot[s1][k];
+                    uint8_t h1 = (uint8_t)(((m1) ^ (m1 >> 11) ^ (m1 >> 23)) & 255);
+                    bool already = false;
+                    if(s11 >= 0 && (bloom_by_slot[s11][h1 >> 6] & (1ULL << (h1 & 63))) != 0){
+                        for(uint16_t j = 0; j < cap_count[s11]; j++){
+                            if(cap_by_slot[s11][j] == m1){
+                                already = true;
+                                break;
+                            }
                         }
                     }
-                }
-                if(!already && out_list->size < 1024){
-                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, m1 };
+                    if(!already && out_list->size < 1024){
+                        out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, m1 };
+                    }
                 }
             }
         } else {
             uint8_t v = get_value(card);
-            if(!cap_computed[v]){
+            int8_t sv = val_to_slot[v];
+            if(sv == -1 && num_slots < 8){
+                sv = (int8_t)(num_slots++);
+                val_to_slot[v] = sv;
                 if(active_count[v] > 0){
-                    combine_disjoint_masks(0, 0, active_count[v], active_by_val[v], cap_by_val[v], &cap_count[v], 256, bloom_by_val[v]);
+                    combine_disjoint_masks(0, 0, active_count[v], active_by_val[v],
+                                           cap_by_slot[sv], &cap_count[sv], 256, bloom_by_slot[sv]);
                 }
-                cap_computed[v] = true;
             }
-            for(uint16_t k = 0; k < cap_count[v]; k++){
-                if(out_list->size < 1024){
-                    out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_val[v][k] };
+            if(sv >= 0){
+                for(uint16_t k = 0; k < cap_count[sv]; k++){
+                    if(out_list->size < 1024){
+                        out_list->moves[out_list->size++] = (s_cte_bitboard_move){ card, cap_by_slot[sv][k] };
+                    }
                 }
             }
         }
