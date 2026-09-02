@@ -234,31 +234,44 @@ static uint8_t collect_active_base_masks(uint64_t table_bb, uint8_t target_val, 
     return found;
 }
 
-// Combine disjoint base masks into multi-capture unions (with deduplication)
+// Combine disjoint base masks into multi-capture unions (with fast bloom filter deduplication)
 static void combine_disjoint_masks(uint64_t current_union,
                                   uint8_t start_idx,
                                   uint8_t num_active,
                                   const uint64_t *active_masks,
                                   uint64_t *out_captures,
                                   uint16_t *out_count,
-                                  uint16_t max_captures)
+                                  uint16_t max_captures,
+                                  uint64_t *bloom)
 {
     for(uint8_t i = start_idx; i < num_active; i++){
         uint64_t next_mask = active_masks[i];
         if((current_union & next_mask) == 0){
             uint64_t new_union = current_union | next_mask;
 
-            bool exists = false;
-            for(uint16_t k = 0; k < *out_count; k++){
-                if(out_captures[k] == new_union){
-                    exists = true;
-                    break;
+            uint8_t h = (uint8_t)(((new_union) ^ (new_union >> 11) ^ (new_union >> 23)) & 255);
+            uint8_t word = h >> 6;
+            uint64_t bit = 1ULL << (h & 63);
+
+            if((bloom[word] & bit) == 0){
+                bloom[word] |= bit;
+                if(*out_count < max_captures){
+                    out_captures[(*out_count)++] = new_union;
+                }
+            } else {
+                bool exists = false;
+                for(uint16_t k = 0; k < *out_count; k++){
+                    if(out_captures[k] == new_union){
+                        exists = true;
+                        break;
+                    }
+                }
+                if(!exists && *out_count < max_captures){
+                    out_captures[(*out_count)++] = new_union;
                 }
             }
-            if(!exists && *out_count < max_captures){
-                out_captures[(*out_count)++] = new_union;
-            }
-            combine_disjoint_masks(new_union, (uint8_t)(i + 1), num_active, active_masks, out_captures, out_count, max_captures);
+            combine_disjoint_masks(new_union, (uint8_t)(i + 1), num_active, active_masks,
+                                   out_captures, out_count, max_captures, bloom);
         }
     }
 }
@@ -287,23 +300,25 @@ t_cteerr bitboard_gen_card_moves_table(struct s_cte_move_list *moves, uint64_t t
     uint64_t capture_masks[256];
     uint16_t capture_count = 0;
 
+    uint64_t bloom[4] = {0};
+
     if(ace){
         if(table_max_sum >= 11){
             uint8_t n11 = collect_active_base_masks(table_bb, 11, active_masks, 64);
             if(n11 > 0){
-                combine_disjoint_masks(0, 0, n11, active_masks, capture_masks, &capture_count, 256);
+                combine_disjoint_masks(0, 0, n11, active_masks, capture_masks, &capture_count, 256, bloom);
             }
         }
 
         uint64_t active_masks_1[64];
         uint8_t n1 = collect_active_base_masks(table_bb, 1, active_masks_1, 64);
         if(n1 > 0){
-            combine_disjoint_masks(0, 0, n1, active_masks_1, capture_masks, &capture_count, 256);
+            combine_disjoint_masks(0, 0, n1, active_masks_1, capture_masks, &capture_count, 256, bloom);
         }
     } else {
         uint8_t n = collect_active_base_masks(table_bb, val, active_masks, 64);
         if(n > 0){
-            combine_disjoint_masks(0, 0, n, active_masks, capture_masks, &capture_count, 256);
+            combine_disjoint_masks(0, 0, n, active_masks, capture_masks, &capture_count, 256, bloom);
         }
     }
 
@@ -403,6 +418,7 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
     uint64_t cap_by_val[15][256];
     uint16_t cap_count[15] = {0};
     bool     cap_computed[15] = {0};
+    uint64_t bloom_by_val[15][4] = {{0}};
 
     for(uint8_t h = 0; h < hand->size; h++){
         t_card card = hand->array[h];
@@ -411,7 +427,7 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
         if(ace){
             if(!cap_computed[11]){
                 if(active_count[11] > 0){
-                    combine_disjoint_masks(0, 0, active_count[11], active_by_val[11], cap_by_val[11], &cap_count[11], 256);
+                    combine_disjoint_masks(0, 0, active_count[11], active_by_val[11], cap_by_val[11], &cap_count[11], 256, bloom_by_val[11]);
                 }
                 cap_computed[11] = true;
             }
@@ -424,17 +440,20 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
             // Ace as 1 (only add masks not already added by Ace as 11)
             if(!cap_computed[1]){
                 if(active_count[1] > 0){
-                    combine_disjoint_masks(0, 0, active_count[1], active_by_val[1], cap_by_val[1], &cap_count[1], 256);
+                    combine_disjoint_masks(0, 0, active_count[1], active_by_val[1], cap_by_val[1], &cap_count[1], 256, bloom_by_val[1]);
                 }
                 cap_computed[1] = true;
             }
             for(uint16_t k = 0; k < cap_count[1]; k++){
                 uint64_t m1 = cap_by_val[1][k];
+                uint8_t h1 = (uint8_t)(((m1) ^ (m1 >> 11) ^ (m1 >> 23)) & 255);
                 bool already = false;
-                for(uint16_t j = 0; j < cap_count[11]; j++){
-                    if(cap_by_val[11][j] == m1){
-                        already = true;
-                        break;
+                if((bloom_by_val[11][h1 >> 6] & (1ULL << (h1 & 63))) != 0){
+                    for(uint16_t j = 0; j < cap_count[11]; j++){
+                        if(cap_by_val[11][j] == m1){
+                            already = true;
+                            break;
+                        }
                     }
                 }
                 if(!already && out_list->size < 1024){
@@ -445,7 +464,7 @@ void bitboard_gen_all_compact_moves_table(s_cte_bitboard_move_list *out_list, ui
             uint8_t v = get_value(card);
             if(!cap_computed[v]){
                 if(active_count[v] > 0){
-                    combine_disjoint_masks(0, 0, active_count[v], active_by_val[v], cap_by_val[v], &cap_count[v], 256);
+                    combine_disjoint_masks(0, 0, active_count[v], active_by_val[v], cap_by_val[v], &cap_count[v], 256, bloom_by_val[v]);
                 }
                 cap_computed[v] = true;
             }
@@ -529,6 +548,7 @@ static s_cte_pos bitboard_adapter_to_pos(const s_cte_game *game){
         .players = &game->players,
         .deck = &game->deck,
         .current_player_id = game->current_player_id,
+        .is_team_mode = game->is_team_mode,
     };
     return pos_from_state(&st);
 }
