@@ -122,7 +122,7 @@ t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
 
     // Direct bitboard path: no round-trip through struct table
     s_cte_bitboard_move_list cpt;
-    bitboard_gen_all_compact_moves_table(&cpt, pos->table_bb, &cur_hand);
+    bitboard_gen_all_compact_moves_rank(&cpt, pos->table_bb, &cur_hand);
 
     // Convert compact moves to s_cte_move format
     if(!moves->moves && moves->max == 0){
@@ -246,7 +246,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     }
 
     s_cte_bitboard_move_list cpt;
-    bitboard_gen_all_compact_moves_table(&cpt, pos->table_bb, &cur_hand);
+    bitboard_gen_all_compact_moves_rank(&cpt, pos->table_bb, &cur_hand);
     if(cpt.size == 0){
         return pos_evaluate(pos, root_player);
     }

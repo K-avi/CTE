@@ -47,10 +47,12 @@ int main(){
     const s_cte_engine_backend *be_arr   = cte_get_backend(CTE_BACKEND_ARRAY);
     const s_cte_engine_backend *be_bb    = cte_get_backend(CTE_BACKEND_BITBOARD);
     const s_cte_engine_backend *be_tbl   = cte_get_backend(CTE_BACKEND_BITBOARD_TABLE);
+    const s_cte_engine_backend *be_rnk   = cte_get_backend(CTE_BACKEND_BITBOARD_RANK);
 
     assert(be_arr != NULL);
     assert(be_bb != NULL);
     assert(be_tbl != NULL);
+    assert(be_rnk != NULL);
 
     // -------------------------------------------------------------
     // BT1: Validation Mathématique Interne de la Table Pivot 1D
@@ -353,8 +355,69 @@ int main(){
     }
     printf("      -> PASS: 10,000 / 10,000 configurations 100%% identical with 1-Pass Pivot Tables.\n\n");
 
+    // -------------------------------------------------------------
+    // BT8: Validation Différentielle du Générateur Motifs de Rangs SWAR (10 000 positions)
+    // -------------------------------------------------------------
+    printf("[BT8] Validating 1-Pass SWAR Rank Patterns Compact Generator (7.1 KB) vs Array Oracle (10,000 positions)...\n");
+    srand(98765);
+
+    for(uint32_t iter = 0; iter < 10000; iter++){
+        uint8_t deck_shuff[52];
+        for(uint8_t i = 0; i < 52; i++) deck_shuff[i] = i;
+        for(int i = 51; i > 0; i--){
+            int j = rand() % (i + 1);
+            uint8_t tmp = deck_shuff[i];
+            deck_shuff[i] = deck_shuff[j];
+            deck_shuff[j] = tmp;
+        }
+
+        uint8_t table_sz = (uint8_t)(rand() % 11);
+        uint8_t hand_sz  = (uint8_t)(1 + (rand() % 6));
+
+        struct table rand_table;
+        rand_table.nb_cards_on_table = table_sz;
+        uint64_t table_bb = 0;
+        for(uint8_t i = 0; i < table_sz; i++){
+            rand_table.cards_on_table[i] = deck_shuff[i];
+            table_bb |= (1ULL << deck_shuff[i]);
+        }
+
+        struct s_cte_hand rand_hand;
+        rand_hand.size = hand_sz;
+        for(uint8_t i = 0; i < hand_sz; i++){
+            rand_hand.array[i] = deck_shuff[table_sz + i];
+        }
+
+        init_move_list(&moves_arr, 16);
+        be_arr->gen_all_moves(&moves_arr, &rand_table, &rand_hand);
+
+        s_cte_bitboard_move_list compact_rnk;
+        bitboard_gen_all_compact_moves_rank(&compact_rnk, table_bb, &rand_hand);
+
+        assert(moves_arr.size == compact_rnk.size);
+
+        for(uint16_t i = 0; i < moves_arr.size; i++){
+            const struct s_cte_move *m_arr = &moves_arr.moves[i];
+            uint64_t mask_arr = move_to_bitmask(m_arr);
+            bool found = false;
+
+            for(uint16_t j = 0; j < compact_rnk.size; j++){
+                const s_cte_bitboard_move *m_c = &compact_rnk.moves[j];
+                if(m_arr->card_played == m_c->card_played && mask_arr == m_c->capture_mask){
+                    found = true;
+                    break;
+                }
+            }
+            assert(found);
+        }
+
+        free_move_list(&moves_arr);
+    }
+    printf("      -> PASS: 10,000 / 10,000 configurations 100%% identical with 1-Pass SWAR Rank Patterns.\n\n");
+
     printf("=======================================================\n");
-    printf("     ALL 3-WAY BITBOARD TESTS PASSED WITH 0 ERRORS !   \n");
+    printf("     ALL 4-WAY BITBOARD TESTS PASSED WITH 0 ERRORS !   \n");
     printf("=======================================================\n");
     return 0;
 }
+

@@ -108,6 +108,17 @@ int main(){
     clock_t t9 = clock();
     double time_cpt_tbl = (double)(t9 - t8) / CLOCKS_PER_SEC;
 
+    // 6. Bitboard 1-Pass Compact SWAR Rank Patterns (7.1 KB RAM, 100% L1 cache)
+    clock_t t10 = clock();
+    uint64_t moves_cpt_rnk = 0;
+    s_cte_bitboard_move_list compact_list_rnk;
+    for(uint32_t i = 0; i < NUM_SAMPLES; i++){
+        bitboard_gen_all_compact_moves_rank(&compact_list_rnk, table_bbs[i], &hands[i]);
+        moves_cpt_rnk += compact_list_rnk.size;
+    }
+    clock_t t11 = clock();
+    double time_cpt_rnk = (double)(t11 - t10) / CLOCKS_PER_SEC;
+
     free_move_list(&moves);
     free(tables);
     free(hands);
@@ -118,12 +129,14 @@ int main(){
     double mops_tbl = (double)moves_tbl_cnt / (time_tbl * 1000000.0);
     double mops_cdy = (double)moves_cpt_dyn / (time_cpt_dyn * 1000000.0);
     double mops_ctb = (double)moves_cpt_tbl / (time_cpt_tbl * 1000000.0);
+    double mops_crk = (double)moves_cpt_rnk / (time_cpt_rnk * 1000000.0);
 
     double ns_pos_arr = (time_arr * 1e9) / NUM_SAMPLES;
     double ns_pos_dyn = (time_dyn * 1e9) / NUM_SAMPLES;
     double ns_pos_tbl = (time_tbl * 1e9) / NUM_SAMPLES;
     double ns_pos_cdy = (time_cpt_dyn * 1e9) / NUM_SAMPLES;
     double ns_pos_ctb = (time_cpt_tbl * 1e9) / NUM_SAMPLES;
+    double ns_pos_crk = (time_cpt_rnk * 1e9) / NUM_SAMPLES;
 
     printf(" Evaluated: 200,000 realistic board states (%lu moves generated per backend)\n\n", (unsigned long)moves_arr_cnt);
     printf(" | Implementation                        | Temps (s) | Débit (Mcoups/s) | Temps / Pos | Cycles @ 2.2 GHz |\n");
@@ -133,8 +146,10 @@ int main(){
     printf(" | Bitboard 1D Pivot Tables (Optimisé)   | %7.3f s | %8.2f Mcoups/s | %7.1f ns  | %12.0f cycles |\n", time_tbl, mops_tbl, ns_pos_tbl, ns_pos_tbl * 2.2);
     printf(" | Bitboard Compact Dynamique (Option A) | %7.3f s | %8.2f Mcoups/s | %7.1f ns  | %12.0f cycles |\n", time_cpt_dyn, mops_cdy, ns_pos_cdy, ns_pos_cdy * 2.2);
     printf(" | Bitboard Compact 1D Pivot Tables 1-P  | %7.3f s | %8.2f Mcoups/s | %7.1f ns  | %12.0f cycles |\n", time_cpt_tbl, mops_ctb, ns_pos_ctb, ns_pos_ctb * 2.2);
+    printf(" | Bitboard Compact SWAR Rank Pat. (L1)  | %7.3f s | %8.2f Mcoups/s | %7.1f ns  | %12.0f cycles |\n", time_cpt_rnk, mops_crk, ns_pos_crk, ns_pos_crk * 2.2);
     printf("==================================================================================\n");
-    printf(" -> GAIN TABLES PIVOT COMPACTES : %.2fx plus rapide que le backend Array de référence !\n\n", time_arr / time_cpt_tbl);
+    printf(" -> GAIN TABLES PIVOT COMPACTES : %.2fx plus rapide que le backend Array de référence !\n", time_arr / time_cpt_tbl);
+    printf(" -> GAIN SWAR RANK PATTERNS L1  : %.2fx plus rapide que le backend Array de référence !\n\n", time_arr / time_cpt_rnk);
 
     return 0;
 }

@@ -46,8 +46,15 @@ t_cteerr bitboard_gen_all_moves_dynamic(struct s_cte_move_list *moves, uint64_t 
 t_cteerr bitboard_gen_card_moves_table(struct s_cte_move_list *moves, uint64_t table_bb, t_card card);
 t_cteerr bitboard_gen_all_moves_table(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand);
 
+// Compact SWAR Rank Patterns bitboard move generation (7.1 KB RAM, 100% L1 cache resident)
+void bitboard_gen_all_compact_moves_rank(s_cte_bitboard_move_list *out_list, uint64_t table_bb, const struct s_cte_hand *hand);
+t_cteerr bitboard_gen_card_moves_rank(struct s_cte_move_list *moves, uint64_t table_bb, t_card card);
+t_cteerr bitboard_gen_all_moves_rank(struct s_cte_move_list *moves, uint64_t table_bb, const struct s_cte_hand *hand);
+
 // Registered backends
 extern const s_cte_engine_backend g_backend_bitboard;        // Dynamic (Default)
-extern const s_cte_engine_backend g_backend_bitboard_table;  // Lookup Tables
+extern const s_cte_engine_backend g_backend_bitboard_table;  // Lookup Tables (225 KB)
+extern const s_cte_engine_backend g_backend_bitboard_rank;   // Compact SWAR Rank Patterns (7.1 KB, L1)
 
 #endif
+
