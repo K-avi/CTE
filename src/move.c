@@ -100,27 +100,18 @@ static bool can_partition_rec(uint32_t mask, const uint8_t *valid_base, int8_t *
 
 bool is_exact_partition(const uint8_t *cards, uint8_t n, uint8_t target_val){
     if(n == 0) return false;
-    if(n > 20) return false;
+    if(n > 16) return false;
 
     uint32_t num_masks = 1u << n;
-    uint8_t *valid_base = malloc(num_masks * sizeof(uint8_t));
-    int8_t *memo = malloc(num_masks * sizeof(int8_t));
-    if(!valid_base || !memo){
-        free(valid_base);
-        free(memo);
-        return false;
-    }
+    uint8_t valid_base[num_masks];
+    int8_t memo[num_masks];
 
     for(uint32_t m = 0; m < num_masks; m++){
         valid_base[m] = (m > 0) ? (uint8_t)subset_sums_to(cards, m, n, target_val) : 0;
         memo[m] = -1;
     }
 
-    bool result = can_partition_rec(num_masks - 1, valid_base, memo);
-
-    free(valid_base);
-    free(memo);
-    return result;
+    return can_partition_rec(num_masks - 1, valid_base, memo);
 }
 
 t_cteerr is_legal(bool *ret, const struct table *table, const struct s_cte_move *move){
@@ -164,15 +155,10 @@ t_cteerr is_legal(bool *ret, const struct table *table, const struct s_cte_move 
 }
 
 static void find_valid_capture_masks(const uint8_t *table_cards, uint8_t n, uint8_t target_val, uint8_t *is_valid_capture){
-    if(n == 0 || n > 20) return;
+    if(n == 0 || n > 16) return;
     uint32_t num_masks = 1u << n;
-    uint8_t *valid_base = malloc(num_masks * sizeof(uint8_t));
-    int8_t *memo = malloc(num_masks * sizeof(int8_t));
-    if(!valid_base || !memo){
-        free(valid_base);
-        free(memo);
-        return;
-    }
+    uint8_t valid_base[num_masks];
+    int8_t memo[num_masks];
 
     for(uint32_t m = 0; m < num_masks; m++){
         valid_base[m] = (m > 0) ? (uint8_t)subset_sums_to(table_cards, m, n, target_val) : 0;
@@ -184,9 +170,6 @@ static void find_valid_capture_masks(const uint8_t *table_cards, uint8_t n, uint
             is_valid_capture[m] = 1;
         }
     }
-
-    free(valid_base);
-    free(memo);
 }
 
 t_cteerr gen_card_moves(struct s_cte_move_list *moves, const struct table *table, t_card card){
