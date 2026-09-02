@@ -1,2 +1,4 @@
-build/test
-build/cte
+build/
+perf.data*
+tools/__pycache__/
+toto
