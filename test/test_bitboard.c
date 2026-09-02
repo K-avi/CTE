@@ -398,6 +398,37 @@ int main(){
     }
     printf("      -> PASS: 10,000 / 10,000 configurations 100%% identical with 1-Pass SWAR Rank Patterns.\n\n");
 
+    // -------------------------------------------------------------
+    // BT9: Simulation 500 Manches sous SWAR Rank Patterns Backend
+    // -------------------------------------------------------------
+    printf("[BT9] Running 500 complete multi-player rounds via SWAR Rank Patterns Backend...\n");
+    s_cte_game game_rnk;
+    char *names_rnk[4] = { "Rank_A", "Rank_B", "Rank_C", "Rank_D" };
+    be_rnk->init_game(&game_rnk, 4, names_rnk, true);
+
+    for(unsigned int s = 0; s < 500; s++){
+        reset_all_players(&game_rnk.players);
+        srand(s * 13 + 37);
+
+        t_cteerr err = be_rnk->run_round(&game_rnk, &r_cfg);
+        assert(err == e_ok);
+        assert(game_rnk.deck.cur_card == 52);
+        assert(game_rnk.table_bb == 0);
+
+        uint8_t total_c = 0;
+        uint8_t total_pts = 0;
+        for(uint8_t p = 0; p < 4; p++){
+            total_c += game_rnk.players.players[p].won_cards.size;
+            for(uint8_t c = 0; c < game_rnk.players.players[p].won_cards.size; c++){
+                total_pts += get_points(game_rnk.players.players[p].won_cards.array[c]);
+            }
+        }
+        assert(total_c == 52);
+        assert(total_pts == 22);
+    }
+    be_rnk->free_game(&game_rnk);
+    printf("      -> PASS: 500 / 500 rounds completed with strict card and points conservation.\n\n");
+
     printf("=======================================================\n");
     printf("     ALL 4-WAY BITBOARD TESTS PASSED WITH 0 ERRORS !   \n");
     printf("=======================================================\n");
