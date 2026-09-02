@@ -47,7 +47,7 @@ Steps & Roadmap :
         - [ ] Fair AI: Perfect Information Monte Carlo (PIMC determinization)
         - [ ] Monte Carlo Tree Search (MCTS)
    [ ] Pipedream :
-        - [ ] CTE NNUE
+        - [ ] CTE NN
 
 4. HPC & Architecture Optimizations (Bitboards & SIMD) :
    [x] Backend-agnostic engine abstraction layer:

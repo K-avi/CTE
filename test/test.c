@@ -673,15 +673,11 @@ int main(){
     memset(&tactical_pos, 0, sizeof(tactical_pos));
     tactical_pos.nb_players = 2;
     tactical_pos.current_player = 0;
-    tactical_pos.table_count = 2;
-    tactical_pos.table[0] = 11; // Dame
-    tactical_pos.table[1] = 9;  // As
+    tactical_pos.table_bb = (1ULL << 11) | (1ULL << 9); // Dame (11) + As (9)
     tactical_pos.hand_counts[0] = 2;
-    tactical_pos.hands[0][0] = 12; // Roi
-    tactical_pos.hands[0][1] = 0;  // 2
+    tactical_pos.hand_bb[0] = (1ULL << 12) | (1ULL << 0); // Roi (12) + 2 (0)
     tactical_pos.hand_counts[1] = 2;
-    tactical_pos.hands[1][0] = 2;
-    tactical_pos.hands[1][1] = 3;
+    tactical_pos.hand_bb[1] = (1ULL << 2) | (1ULL << 3);
 
     struct s_cte_move_list tact_moves;
     err = init_move_list(&tact_moves, 8);

@@ -136,6 +136,7 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
             .table             = &game->table,
             .players           = &game->players,
             .current_player_id = current,
+            .is_team_mode      = game->is_team_mode,
         };
 
         if(config->callbacks && config->callbacks->on_turn_start){

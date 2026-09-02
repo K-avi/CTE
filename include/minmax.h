@@ -6,19 +6,18 @@
 #include "move.h"
 #include "eval.h"
 
-// Compact game snapshot (fits in a 64-byte L1 cache line)
+// Compact game snapshot (fits in a 64-byte L1 cache line: exactly 60 bytes)
 typedef struct {
-    uint8_t table_count;
-    t_card  table[20];
-    uint8_t hand_counts[4];
-    t_card  hands[4][6];
-    uint8_t won_card_counts[4];
-    uint8_t card_points[4];
-    uint8_t tablic_counts[4];
-    uint8_t current_player;
-    int8_t  last_captor;
-    uint8_t nb_players;
-    bool    is_team_mode;
+    uint64_t table_bb;          // 52-bit mask of cards on the table
+    uint64_t hand_bb[4];        // 52-bit mask of cards in each player's hand
+    uint8_t  hand_counts[4];    // Number of cards in each player's hand
+    uint8_t  won_card_counts[4];// Number of won cards per player
+    uint8_t  card_points[4];    // Cumulative card points per player
+    uint8_t  tablic_counts[4];  // Cumulative tablic count per player
+    uint8_t  current_player;    // Active player (0..nb_players-1)
+    int8_t   last_captor;       // Last capturing player (-1 if none)
+    uint8_t  nb_players;        // 2, 3, or 4
+    bool     is_team_mode;      // True for 4-player 2v2 team mode
 } s_cte_pos;
 
 typedef struct {
@@ -31,6 +30,7 @@ s_cte_pos pos_from_state(const s_cte_game_state *state);
 
 // Apply a move to a position snapshot (pure, returns new position on stack)
 s_cte_pos pos_apply_move(const s_cte_pos *pos, const struct s_cte_move *move);
+s_cte_pos pos_apply_bitboard_move(const s_cte_pos *pos, t_card card_played, uint64_t capture_mask);
 
 // Generate legal moves for current player in pos
 t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos);

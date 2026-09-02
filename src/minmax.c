@@ -1,4 +1,5 @@
 #include "minmax.h"
+#include "backend_bitboard.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,114 +12,150 @@ s_cte_pos pos_from_state(const s_cte_game_state *state){
     memset(&res, 0, sizeof(res));
     if(!state) return res;
 
-    res.table_count = (state->table->nb_cards_on_table < 20) ? state->table->nb_cards_on_table : 20;
-    for(uint8_t i = 0; i < res.table_count; i++){
-        res.table[i] = state->table->cards_on_table[i];
+    if(state->table){
+        for(uint8_t i = 0; i < state->table->nb_cards_on_table; i++){
+            t_card c = state->table->cards_on_table[i];
+            if(c < 52) res.table_bb |= (1ULL << c);
+        }
     }
 
     res.nb_players = (state->players && state->players->size <= 4) ? state->players->size : 2;
     res.current_player = state->current_player_id;
     res.last_captor = -1;
-    res.is_team_mode = (res.nb_players == 4);
+    res.is_team_mode = state->is_team_mode && (res.nb_players == 4);
 
-    for(uint8_t p = 0; p < res.nb_players; p++){
-        const struct s_cte_player_data *pl = &state->players->players[p];
-        res.hand_counts[p] = (pl->hand.size < 6) ? pl->hand.size : 6;
-        for(uint8_t i = 0; i < res.hand_counts[p]; i++){
-            res.hands[p][i] = pl->hand.array[i];
+    if(state->players){
+        for(uint8_t p = 0; p < res.nb_players; p++){
+            const struct s_cte_player_data *pl = &state->players->players[p];
+            res.hand_counts[p] = pl->hand.size;
+            for(uint8_t i = 0; i < pl->hand.size; i++){
+                t_card c = pl->hand.array[i];
+                if(c < 52) res.hand_bb[p] |= (1ULL << c);
+            }
+            res.won_card_counts[p] = pl->won_cards.size;
+            res.tablic_counts[p] = pl->nb_tablic;
+
+            uint8_t pts = 0;
+            for(uint8_t j = 0; j < pl->won_cards.size; j++){
+                pts += get_points(pl->won_cards.array[j]);
+            }
+            res.card_points[p] = pts;
         }
-        res.won_card_counts[p] = pl->won_cards.size;
-        res.tablic_counts[p] = pl->nb_tablic;
-        
-        uint8_t pts = 0;
-        for(uint8_t j = 0; j < pl->won_cards.size; j++){
-            pts += get_points(pl->won_cards.array[j]);
-        }
-        res.card_points[p] = pts;
     }
 
     return res;
 }
 
-s_cte_pos pos_apply_move(const s_cte_pos *pos, const struct s_cte_move *move){
+s_cte_pos pos_apply_bitboard_move(const s_cte_pos *pos, t_card card_played, uint64_t capture_mask){
     s_cte_pos next;
-    memset(&next, 0, sizeof(next));
-    if(!pos || !move) return next;
+    if(!pos){
+        memset(&next, 0, sizeof(next));
+        return next;
+    }
     next = *pos;
 
     uint8_t p = pos->current_player;
 
-    // 1. Remove card_played from player hand in snapshot
-    int hand_idx = -1;
-    for(uint8_t i = 0; i < next.hand_counts[p]; i++){
-        if(next.hands[p][i] == move->card_played){
-            hand_idx = i;
-            break;
-        }
-    }
-    if(hand_idx != -1){
-        for(uint8_t i = (uint8_t)hand_idx; i + 1 < next.hand_counts[p]; i++){
-            next.hands[p][i] = next.hands[p][i + 1];
-        }
-        next.hand_counts[p]--;
+    // 1. Remove card_played from player's hand bitboard
+    if(card_played < 52){
+        next.hand_bb[p] &= ~(1ULL << card_played);
+        if(next.hand_counts[p] > 0) next.hand_counts[p]--;
     }
 
     // 2. Drop move
-    if(move->cards_picked.size == 0){
-        if(next.table_count < 20){
-            next.table[next.table_count++] = move->card_played;
+    if(capture_mask == 0){
+        if(card_played < 52){
+            next.table_bb |= (1ULL << card_played);
         }
         next.current_player = (uint8_t)((p + 1) % pos->nb_players);
         return next;
     }
 
-    // 3. Capture move
-    s_cte_move_score score = score_move(move, pos->table_count);
-    next.card_points[p] += score.card_points;
-    next.won_card_counts[p] += score.nb_cards;
-    if(score.is_tablic){
+    // 3. Capture move: calculate card points directly from bits
+    uint8_t pts = get_points(card_played);
+    uint64_t temp = capture_mask;
+    uint8_t num_picked = 0;
+    while(temp > 0){
+        int bit = __builtin_ctzll(temp);
+        pts += get_points((t_card)bit);
+        num_picked++;
+        temp &= (temp - 1);
+    }
+
+    next.card_points[p] += pts;
+    next.won_card_counts[p] += (uint8_t)(1 + num_picked);
+    next.table_bb &= ~capture_mask;
+    if(next.table_bb == 0){
         next.tablic_counts[p]++;
     }
     next.last_captor = (int8_t)p;
-
-    // Remove picked cards from table
-    for(uint8_t k = 0; k < move->cards_picked.size; k++){
-        t_card target = move->cards_picked.array[k];
-        int tbl_idx = -1;
-        for(uint8_t j = 0; j < next.table_count; j++){
-            if(next.table[j] == target){
-                tbl_idx = j;
-                break;
-            }
-        }
-        if(tbl_idx != -1){
-            for(uint8_t j = (uint8_t)tbl_idx; j + 1 < next.table_count; j++){
-                next.table[j] = next.table[j + 1];
-            }
-            next.table_count--;
-        }
-    }
-
     next.current_player = (uint8_t)((p + 1) % pos->nb_players);
     return next;
+}
+
+s_cte_pos pos_apply_move(const s_cte_pos *pos, const struct s_cte_move *move){
+    if(!pos || !move){
+        s_cte_pos empty = {0};
+        return empty;
+    }
+    uint64_t mask = 0;
+    for(uint8_t i = 0; i < move->cards_picked.size; i++){
+        if(move->cards_picked.array[i] < 52){
+            mask |= (1ULL << move->cards_picked.array[i]);
+        }
+    }
+    return pos_apply_bitboard_move(pos, move->card_played, mask);
 }
 
 t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
     if(!moves || !pos) return e_null;
 
-    struct table tbl;
-    tbl.nb_cards_on_table = pos->table_count;
-    for(uint8_t i = 0; i < pos->table_count; i++){
-        tbl.cards_on_table[i] = pos->table[i];
-    }
-
+    // Extract hand directly from bitboard (no struct table needed)
     struct s_cte_hand cur_hand;
-    cur_hand.size = pos->hand_counts[pos->current_player];
-    for(uint8_t i = 0; i < cur_hand.size; i++){
-        cur_hand.array[i] = pos->hands[pos->current_player][i];
+    cur_hand.size = 0;
+    uint64_t h_temp = pos->hand_bb[pos->current_player];
+    while(h_temp > 0){
+        int bit = __builtin_ctzll(h_temp);
+        cur_hand.array[cur_hand.size++] = (t_card)bit;
+        h_temp &= (h_temp - 1);
     }
 
-    return gen_all_moves(moves, &tbl, &cur_hand);
+    // Direct bitboard path: no round-trip through struct table
+    s_cte_bitboard_move_list cpt;
+    bitboard_gen_all_compact_moves_table(&cpt, pos->table_bb, &cur_hand);
+
+    // Convert compact moves to s_cte_move format
+    if(!moves->moves && moves->max == 0){
+        t_cteerr err = init_move_list(moves, cpt.size > 0 ? cpt.size : 16);
+        if(err != e_ok) return err;
+    }
+
+    for(uint16_t i = 0; i < cpt.size; i++){
+        struct s_cte_move m;
+        m.card_played = cpt.moves[i].card_played;
+        uint64_t mask = cpt.moves[i].capture_mask;
+        if(mask == 0){
+            m.cards_picked.size = 0;
+        } else {
+            m.cards_picked.size = (uint8_t)__builtin_popcountll(mask);
+            uint8_t idx = 0;
+            uint64_t temp = mask;
+            while(temp > 0){
+                m.cards_picked.array[idx++] = (uint8_t)__builtin_ctzll(temp);
+                temp &= (temp - 1);
+            }
+        }
+        if(moves->size >= moves->max){
+            uint16_t new_cap = moves->max == 0 ? 16 : moves->max * 2;
+            struct s_cte_move *new_arr = realloc(moves->moves, sizeof(struct s_cte_move) * new_cap);
+            if(!new_arr) return e_realloc;
+            moves->moves = new_arr;
+            moves->max = new_cap;
+        }
+        moves->moves[moves->size++] = m;
+    }
+
+    return e_ok;
 }
 
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
@@ -200,13 +237,17 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         return alphabeta_search(&next_pos, depth, alpha, beta, root_player);
     }
 
-    struct s_cte_move_list moves;
-    t_cteerr err = init_move_list(&moves, 16);
-    if(err != e_ok) return pos_evaluate(pos, root_player);
+    struct s_cte_hand cur_hand;
+    cur_hand.size = 0;
+    uint64_t h_temp = pos->hand_bb[pos->current_player];
+    while(h_temp > 0){
+        cur_hand.array[cur_hand.size++] = (t_card)__builtin_ctzll(h_temp);
+        h_temp &= (h_temp - 1);
+    }
 
-    err = pos_gen_moves(&moves, pos);
-    if(err != e_ok || moves.size == 0){
-        free_move_list(&moves);
+    s_cte_bitboard_move_list cpt;
+    bitboard_gen_all_compact_moves_table(&cpt, pos->table_bb, &cur_hand);
+    if(cpt.size == 0){
         return pos_evaluate(pos, root_player);
     }
 
@@ -214,25 +255,23 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
 
     if(maximizing){
         int32_t max_eval = -INF_SCORE;
-        for(uint16_t i = 0; i < moves.size; i++){
-            s_cte_pos next_pos = pos_apply_move(pos, &moves.moves[i]);
+        for(uint16_t i = 0; i < cpt.size; i++){
+            s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
             int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player);
             if(eval > max_eval) max_eval = eval;
             if(eval > alpha) alpha = eval;
             if(beta <= alpha) break; // Beta cutoff
         }
-        free_move_list(&moves);
         return max_eval;
     } else {
         int32_t min_eval = +INF_SCORE;
-        for(uint16_t i = 0; i < moves.size; i++){
-            s_cte_pos next_pos = pos_apply_move(pos, &moves.moves[i]);
+        for(uint16_t i = 0; i < cpt.size; i++){
+            s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
             int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player);
             if(eval < min_eval) min_eval = eval;
             if(eval < beta) beta = eval;
             if(beta <= alpha) break; // Alpha cutoff
         }
-        free_move_list(&moves);
         return min_eval;
     }
 }

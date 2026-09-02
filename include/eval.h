@@ -24,6 +24,7 @@ typedef struct s_cte_game_state {
     const struct s_cte_players *players;
     const struct deck          *deck;
     uint8_t                     current_player_id;
+    bool                        is_team_mode;
 } s_cte_game_state;
 
 // Generic evaluator signature

@@ -10,6 +10,7 @@ static s_cte_pos backend_array_to_pos(const s_cte_game *game){
         .players = &game->players,
         .deck = &game->deck,
         .current_player_id = game->current_player_id,
+        .is_team_mode = game->is_team_mode,
     };
     return pos_from_state(&st);
 }
