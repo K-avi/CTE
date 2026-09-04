@@ -6,14 +6,18 @@
 #include "move.h"
 #include "eval.h"
 
+// Forward declaration
+struct s_cte_engine_backend;
+
 // Reentrant game structure containing all state
 typedef struct s_cte_game {
-    struct deck          deck;               // Sabot de 52 cartes
-    uint64_t             table_bb;           // 64-bit mask des cartes actives sur la table
-    struct s_cte_players players;            // Joueurs, mains et cartes remportées
-    int8_t               last_captor_id;     // Dernier joueur ayant fait une prise (-1 si aucun)
-    uint8_t              current_player_id;  // Joueur actif (0..players.size-1)
-    bool                 is_team_mode;       // Mode 2v2 par équipes (4 joueurs)
+    const struct s_cte_engine_backend *backend;           // Active backend (NULL = array fallback)
+    struct deck                       deck;               // Sabot de 52 cartes
+    uint64_t                          table_bb;           // 64-bit mask des cartes actives sur la table
+    struct s_cte_players              players;            // Joueurs, mains et cartes remportées
+    int8_t                            last_captor_id;     // Dernier joueur ayant fait une prise (-1 si aucun)
+    uint8_t                           current_player_id;  // Joueur actif (0..players.size-1)
+    bool                              is_team_mode;       // Mode 2v2 par équipes (4 joueurs)
 } s_cte_game;
 
 // Round score summary for a player

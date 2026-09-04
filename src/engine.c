@@ -33,19 +33,14 @@ static const s_cte_engine_backend g_backend_array = {
 };
 
 extern const s_cte_engine_backend g_backend_bitboard;
-extern const s_cte_engine_backend g_backend_bitboard_table;
-extern const s_cte_engine_backend g_backend_bitboard_rank;
 
 const s_cte_engine_backend *cte_get_backend(e_cte_backend_type type){
     switch(type){
         case CTE_BACKEND_BITBOARD:
             return &g_backend_bitboard;
-        case CTE_BACKEND_BITBOARD_TABLE:
-            return &g_backend_bitboard_table;
-        case CTE_BACKEND_BITBOARD_RANK:
-            return &g_backend_bitboard_rank;
         case CTE_BACKEND_ARRAY:
-        default:
             return &g_backend_array;
+        default:
+            return &g_backend_bitboard; // Default = bitboard SWAR
     }
 }

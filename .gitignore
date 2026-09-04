@@ -2,3 +2,5 @@ build/
 perf.data*
 tools/__pycache__/
 toto
+bench.csv
+scratch/

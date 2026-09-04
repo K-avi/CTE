@@ -5,18 +5,15 @@ DEBUG_FLAGS = -g -Og -fsanitize=address -fsanitize=undefined
 
 LDLIBS = -lncursesw
 
-SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/minmax.c src/front_cli.c src/front_tui.c src/engine.c src/backend_bitboard.c src/bitboard_tables.c src/bitboard_rank_tables.c
-HDRS = include/card.h include/player.h include/move.h include/game.h include/eval.h include/minmax.h include/front_cli.h include/front_tui.h include/engine.h include/backend_bitboard.h include/bitboard_tables.h include/bitboard_rank_tables.h include/cte.h
+SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/minmax.c src/front_cli.c src/front_tui.c src/engine.c src/backend_bitboard.c src/bitboard_rank_tables.c
+HDRS = include/card.h include/player.h include/move.h include/game.h include/eval.h include/minmax.h include/front_cli.h include/front_tui.h include/engine.h include/backend_bitboard.h include/bitboard_rank_tables.h include/cte.h
 
-.PHONY: all clean cte test run-test tests check test-bitboard run-test-bitboard tables
+.PHONY: all clean cte test run-test tests check test-bitboard run-test-bitboard
 
 all: cte test test-bitboard
 
 build:
 	@mkdir -p build
-
-tables: tools/bitboard_gen.py
-	python3 tools/bitboard_gen.py
 
 cte: build $(SRCS) $(HDRS) main.c
 	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o build/cte $(SRCS) main.c $(LDLIBS)

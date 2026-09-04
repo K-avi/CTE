@@ -9,11 +9,8 @@
 #include "game.h"
 
 typedef enum {
-    CTE_BACKEND_ARRAY          = 0, // Reference array backend (exact DP subset sum)
-    CTE_BACKEND_BITBOARD       = 1, // Dynamic Bitboard backend (Carry-Rippler, 0 KB RAM)
-    CTE_BACKEND_BITBOARD_TABLE = 2, // Lookup Table Bitboard backend (Precomputed masks, 225 KB RAM)
-    CTE_BACKEND_BITBOARD_RANK  = 3, // Compact SWAR Rank Patterns backend (7.1 KB RAM, 100% L1 cache)
-    CTE_BACKEND_SIMD           = 4  // SIMD batched vector backend (AVX2 / MIPPv2)
+    CTE_BACKEND_ARRAY    = 0, // Reference array backend (exact DP subset sum, tests only)
+    CTE_BACKEND_BITBOARD = 1, // SWAR Rank Patterns bitboard backend (7.1 KB RAM, default)
 } e_cte_backend_type;
 
 // Backend interface contract

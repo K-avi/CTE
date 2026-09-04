@@ -720,28 +720,28 @@ int main(){
 
     backend->free_game(&backend_game);
 
-    // Also validate CTE_BACKEND_BITBOARD_RANK contract & round execution
-    const s_cte_engine_backend *backend_rnk = cte_get_backend(CTE_BACKEND_BITBOARD_RANK);
-    assert(backend_rnk != NULL);
-    assert(backend_rnk->type == CTE_BACKEND_BITBOARD_RANK);
-    assert(backend_rnk->gen_all_moves != NULL);
-    assert(backend_rnk->play_move != NULL);
+    // Also validate CTE_BACKEND_BITBOARD contract & round execution
+    const s_cte_engine_backend *backend_bb = cte_get_backend(CTE_BACKEND_BITBOARD);
+    assert(backend_bb != NULL);
+    assert(backend_bb->type == CTE_BACKEND_BITBOARD);
+    assert(backend_bb->gen_all_moves != NULL);
+    assert(backend_bb->play_move != NULL);
 
     s_cte_game rnk_game;
     char *rnk_names[2] = { "R_P1", "R_P2" };
-    err = backend_rnk->init_game(&rnk_game, 2, rnk_names, false);
+    err = backend_bb->init_game(&rnk_game, 2, rnk_names, false);
     assert(err == e_ok);
 
     srand(8888);
-    err = backend_rnk->run_round(&rnk_game, &backend_cfg);
+    err = backend_bb->run_round(&rnk_game, &backend_cfg);
     assert(err == e_ok);
     assert(rnk_game.deck.cur_card == 52);
     assert(rnk_game.table_bb == 0);
     assert(rnk_game.players.players[0].won_cards.size + rnk_game.players.players[1].won_cards.size == 52);
 
-    s_cte_pos rnk_pos = backend_rnk->to_pos(&rnk_game);
+    s_cte_pos rnk_pos = backend_bb->to_pos(&rnk_game);
     assert(rnk_pos.nb_players == 2);
-    backend_rnk->free_game(&rnk_game);
+    backend_bb->free_game(&rnk_game);
 
     free_game(&game_ai);
     free_game(&game);

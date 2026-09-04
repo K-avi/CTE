@@ -1,4 +1,5 @@
 #include "game.h"
+#include "engine.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -7,6 +8,7 @@ t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_
     if(nb_players < 2 || nb_players > 4) return e_inval_val;
 
     memset(game, 0, sizeof(s_cte_game));
+    game->backend = NULL; // Will be set by caller; NULL = use direct array calls (backward compat)
     game->is_team_mode = is_team_mode;
     game->last_captor_id = -1;
     game->current_player_id = 0;
@@ -132,7 +134,10 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
         err = init_move_list(&moves, 16);
         if(err != e_ok) return err;
 
-        err = gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
+        if(game->backend && game->backend->gen_all_moves)
+            err = game->backend->gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
+        else
+            err = gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
         if(err != e_ok){ free_move_list(&moves); return err; }
 
         s_cte_game_state state = {
@@ -154,7 +159,10 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
 
         struct s_cte_move chosen_move = moves.moves[chosen_idx];
         bool captured = false;
-        err = play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
+        if(game->backend && game->backend->play_move)
+            err = game->backend->play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
+        else
+            err = play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
 
         if(config->callbacks && config->callbacks->on_move_played){
             config->callbacks->on_move_played(&game->players.players[current], &chosen_move, captured, config->ui_context);
