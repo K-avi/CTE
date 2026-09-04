@@ -29,7 +29,7 @@ int main(){
     e7 = init_players(&p_err, 5, (char*[]){"A","B","C","D","E"});
     assert(e7 == e_inval_val);
 
-    e7 = init_players(&p_err, 0, (char*[]){});
+    e7 = init_players(&p_err, 0, (char*[]){NULL});
     assert(e7 == e_inval_val);
 
     err = setup_round(&game);

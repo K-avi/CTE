@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [ gcc, clang ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libncurses-dev libncursesw5-dev
+
+      - name: Build all targets
+        run: |
+          make clean
+          make all CC=${{ matrix.compiler }}
+
+      - name: Run test suites (ASan & UBSan)
+        run: |
+          make tests CC=${{ matrix.compiler }}
+
+      - name: Run benchmark verification
+        run: |
+          make run-bench CC=${{ matrix.compiler }}
+
+      - name: Smoke test CLI game execution
+        run: |
+          ./build/cte --rounds 1 --game ai-vs-ai
+          ./build/cte -n 4 -t --rounds 1 --game ai-vs-ai

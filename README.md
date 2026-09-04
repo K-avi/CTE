@@ -3,6 +3,7 @@
 [![Language](https://img.shields.io/badge/C-GNU23%20%2F%20C23-blue.svg)](https://en.wikipedia.org/wiki/C23_(C_standard_revision))
 [![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE.txt)
 [![Sanitizers](https://img.shields.io/badge/Sanitizers-ASan%20%7C%20UBSan-brightgreen.svg)]()
+[![CI](https://github.com/K-avi/CTE/actions/workflows/ci.yml/badge.svg)](https://github.com/K-avi/CTE/actions/workflows/ci.yml)
 
 **CTE** (*C Tablić Engine*) is a small card game engine and interactive player for **Tablić** (a popular Balkan card game, variant of [Tablanette](https://en.wikipedia.org/wiki/Tablanette)).
 
@@ -10,9 +11,9 @@ The project features both **Interactive CLI** and **ncurses TUI** interfaces.
 
 ---
 
-## 🃏 What is Tablić?
+## What is Tablić?
 
-Tablić is a traditional fishing card game played with a standard 52-card deck:
+Tablić is a fishing card game popular in the Balkans, played with a standard 52-card deck:
 - **Card Values :** Number cards 2–10 have their face value. Aces count as **1** or **11**. Face cards count as: Jack = **12**, Queen = **13**, King = **14**.
 - **Capturing :** A played card can capture any combination of table cards whose sum equals the played card's value, or any **exact partition** of multiple subsets summing to that value in a single move (e.g., King $14$ captures $\{Q(13) + A(1) = 14\}$ and $\{8 + 6 = 14\}$ and $\{9 + 5 = 14\}$ simultaneously).
 - **Tablić Bonus :** Clearing all cards from the table earns a **Tablić** (+1 point).
@@ -20,7 +21,7 @@ Tablić is a traditional fishing card game played with a standard 52-card deck:
 
 ---
 
-## ✨ Features
+## Features
 
 - **Universal Player Modes :**
   - **2 Players** (4 deals of 6 cards).
@@ -32,13 +33,17 @@ Tablić is a traditional fishing card game played with a standard 52-card deck:
   - `dumb` : Passive drop evaluator.
   - `greedy` : Instant heuristic maximizer (card points + Tablić + captured card count).
   - `cheater` : **Minimax search engine with Alpha-Beta pruning**. This engine cheats !! It reads the cards from your hand.
+- **Multi-Backend Architecture (SWAR bitboard & Array reference) :**
+  - **SWAR Bitboard Engine (Default) :** 64-bit board representation using 4-bit SWAR rank pattern matching, 100% L1-resident ($7.1\text{ KB}$ LUT), zero dynamic heap allocations in the search hot path ($5.0\times$ speedup over the reference array implementation).
+  - **Array Reference Oracle :** Combinatorial subset-sum partition backtracking used for continuous 2-way differential fuzzing.
+  - See [`docs/backends.md`](docs/backends.md) for architectural details and benchmark methodology.
 - **Interfaces :**
   - **Interactive CLI** : Clean tabular dashboards with Unicode ($\spadesuit\heartsuit\diamondsuit\clubsuit$) and ASCII ($S/H/D/C$) rendering styles.
   - **ncurses TUI** : Colorized suit pairs (red for $\heartsuit/\diamondsuit$, white/cyan for $\spadesuit/\clubsuit$), live capture preview on the table, and keyboard navigation.
 
 ---
 
-## 🖥️ ncurses TUI Preview
+## ncurses TUI Preview
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -64,7 +69,7 @@ Tablić is a traditional fishing card game played with a standard 52-card deck:
 
 ---
 
-## 🚀 Building & Running
+## Building & Running
 
 ### Requirements
 - C23/GNU23 compatible compiler (`gcc` or `clang`).
@@ -73,11 +78,20 @@ Tablić is a traditional fishing card game played with a standard 52-card deck:
 
 ### Compilation
 ```bash
-# Build release binaries and test suite:
+# Build release binaries, test suites, and benchmarks:
 make all
 
-# Run complete test suite under AddressSanitizer/UBSan:
+# Run complete functional test suite (T1–T26):
 make run-test
+
+# Run 2-way differential fuzzing suite (BT1–BT4):
+make run-test-bitboard
+
+# Run all test suites under AddressSanitizer/UBSan:
+make tests
+
+# Run performance benchmark suite:
+make run-bench
 ```
 
 ### Usage Examples
@@ -114,35 +128,38 @@ Options:
 
 ---
 
-## 🧪 Architecture & Roadmap
+## Architecture & Roadmap
 
 ```
 cte/
 ├── include/
-│   ├── card.h        # Card lookup tables & formatting
-│   ├── player.h      # Player state & won cards tracking
-│   ├── move.h        # Combinatorial exact partition DP & move scoring
-│   ├── game.h        # Universal dealing (12/P), round lifecycle & team scoring
-│   ├── eval.h        # Generic evaluator interface & heuristic evaluators
-│   ├── minmax.h      # Compact 64-byte L1 cache snapshot & Alpha-Beta search
-│   ├── front_cli.h   # Terminal CLI frontend & observer callbacks
-│   ├── front_tui.h   # ncurses interactive TUI frontend
-│   └── cte.h         # Umbrella header
-├── src/              # Implementation source modules
-├── test/             # Unit tests and multi-seed fuzzing suite (T1–T25)
-└── main.c            # CLI entry point & POSIX option parser
+│   ├── card.h                  # Card lookup tables, formatting & Fisher-Yates shuffle
+│   ├── player.h                # Player state & won cards tracking
+│   ├── move.h                  # Move validation (is_legal), state transition (play_move) & scoring
+│   ├── game.h                  # Game orchestration (init_game, run_round, pos_from_game, cte_set_backend)
+│   ├── eval.h                  # Generic evaluator interface & heuristic evaluators
+│   ├── minmax.h                # Compact 60-byte L1 cache snapshot & Alpha-Beta search
+│   ├── engine.h                # Abstract s_cte_engine_backend interface & backend registry
+│   ├── backend_bitboard.h      # SWAR Rank Patterns bitboard move generator prototypes
+│   ├── bitboard_rank_tables.h  # Compact 7.1 KB rank LUT constants & types
+│   ├── front_cli.h             # Terminal CLI frontend & observer callbacks
+│   ├── front_tui.h             # ncurses interactive TUI frontend
+│   └── cte.h                   # Master umbrella header
+├── src/                        # Implementation source modules
+├── test/                       # Functional (T1–T26) & differential bitboard (BT1–BT4) tests
+├── tools/                      # Benchmarks & Python table generator
+├── docs/                       # Architectural documentation (backends.md)
+└── main.c                      # CLI entry point & POSIX option parser
 ```
 
 ### Upcoming Milestones
-- **Backend-Agnostic Abstraction Layer :** Abstract engine interfaces to swap execution backends dynamically.
-- **64-bit Bitboard Engine :** Represent 52-card sets in `uint64_t` registers with hardware BMI2 instructions (`POPCNT`, `TZCNT`, `BLSR`).
-- **SIMD Vectorization Backend :** Inter-game batch vectorization (AVX2 then maybe MIPPv2 (>ᴗ•) ! ) for massively parallel rollouts.
+- **SIMD Vectorization Backend :** Inter-game batch vectorization (GNU vector extensions then maybe MIPPv2 (>ᴗ•) ! ) for parallel rollouts.
 - **Fair Information-Set AI :** Perfect Information Monte Carlo (PIMC determinization) for non-cheating competitive play.
 - **Monte Carlo Tree Search (MCTS) :** Multi-threaded self-play search.
 
 ---
 
-## 🤖 AI-Assisted Development Disclosure
+## AI-Assisted Development Disclosure
 
 In the spirit of scientific and engineering transparency:
 This project is developed as a pair-programming exploration leveraging **Generative AI tools** (Google DeepMind Antigravity / Gemini Advanced Agentic Coding). 
@@ -150,6 +167,6 @@ The primary objective of this repository is to critically benchmark, stress-test
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **GNU General Public License v3.0** (GPLv3) — see the [LICENSE.txt](LICENSE.txt) file for details.

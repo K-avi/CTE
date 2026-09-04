@@ -60,7 +60,7 @@ Steps & Roadmap :
         - Represent 52-card sets as `uint64_t` bitboards (table, hand, won cards)
         - Fast bitwise move generation: Carry-Rippler (0 KB RAM) and Lookup Tables (225 KB)
         - Validated via 3-way differential fuzzing against Array Oracle (10,000+ boards)
-   [ ] SIMD Vectorization backend (AVX2 / AVX-512 / NEON / MIPPv2):
+   [ ] SIMD Vectorization backend (Gnu Vector Extensions / MIPPv2):
         - Inter-game batch vectorization (Structure of Arrays - SoA)
         - Parallel batch rollouts and SIMD-accelerated linear evaluations
    [ ] Multithreading:
@@ -82,3 +82,4 @@ Steps & Roadmap :
 
 6. Other : 
    [ ] Make a manpage for CTE.
+   [x] Setup & use a CI with Actions.
