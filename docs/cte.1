@@ -1,0 +1,195 @@
+.TH CTE 1 "September 2026" "CTE 1.0" "User Commands"
+.SH NAME
+cte \- Tablić card game engine, tournament arena, and interactive player
+.SH SYNOPSIS
+.B cte
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B cte
+(C Tablić Engine) is an implementation of the classic Balkan fishing card game
+.B Tablić
+(Tablanet). It features bitboard SWAR move generation, configurable AI strategies (random, dumb, greedy, minimax/cheater),
+championship tournaments (Round Robin and Knockout Cup), persistent player profiles with Elo rating tracking,
+and an interactive ncurses TUI interface.
+.PP
+When launched without arguments on an interactive terminal (TTY),
+.B cte
+automatically opens the full-screen interactive TUI main menu.
+
+.SH RULES OF TABLIĆ
+Tablić is played with a standard 52-card French deck.
+.SS Game Objective
+Be the first player or team to reach the target winning score (usually 101 points, or 51 points for quick matches).
+.SS Card Values
+.IP \(bu 2
+Cards
+.B 2
+through
+.B 10
+have their pip face value (2 to 10).
+.IP \(bu 2
+.B Ace
+counts as either 1 or 11, chosen to the player's advantage.
+.IP \(bu 2
+.B Jack
+counts as 12.
+.IP \(bu 2
+.B Queen
+counts as 13.
+.IP \(bu 2
+.B King
+counts as 14.
+.SS Gameplay & Captures
+At each turn, a player must play exactly one card from their hand:
+.IP \(bu 2
+.B Capture:
+If the card played matches the value of a card on the table, or matches the sum of two or more cards on the table,
+the player captures those cards along with the played card.
+Crucially, multiple distinct combinations may be captured in a single turn if each combination sums to the played card.
+.IP \(bu 2
+.B Drop (Trailing):
+If no capture is made (or if the player chooses not to capture), the card remains face up on the table.
+.SS Tablić Bonus
+If a player's capture clears the table completely, leaving zero cards, the player scores a
+.B Tablić
+worth
+.B +1 bonus point
+immediately.
+.SS End of Round Scoring
+When all 52 cards have been played, the player who made the last capture collects any remaining cards on the table.
+Points are then tallied:
+.IP \(bu 2
+.B Majority of Cards:
+The player or team with the strictly greatest number of cards won (at least 27 cards) receives
+.B +3 points
+(split 1.5/1.5 if tied).
+.IP \(bu 2
+.B High Cards:
+Each Ace, King, Queen, Jack, and 10 is worth
+.B 1 point.
+.IP \(bu 2
+.B 10 of Diamonds:
+Worth
+.B 2 points
+("two-points ten").
+.IP \(bu 2
+.B 2 of Clubs:
+Worth
+.B 1 point
+("two-points two").
+.PP
+There are 25 base card points in each deck, plus any Tablić points scored during the round.
+
+.SH OPTIONS
+.TP
+.BR \-n ", " \-\-players " \fInumber\fR"
+Number of players: 2 (default), 3, or 4 (up to 16 in tournament mode).
+.TP
+.BR \-t ", " \-\-team
+Enable 4-player 2v2 team mode (valid only with \fB\-n 4\fR).
+.TP
+.BR \-a ", " \-\-ai-type " \fIlist\fR"
+AI strategy or comma-separated list of strategies for bots.
+Supported values:
+.BR random " (uniform pseudo-random moves),"
+.BR dumb " (picks lowest value capture or drop),"
+.BR greedy " (evaluates immediate points and card count),"
+.BR cheater " or " minimax " (tactical lookahead)."
+.TP
+.BR \-m ", " \-\-mode " \fImode\fR"
+UI frontend mode:
+.BR cli " (standard terminal I/O, default),"
+.BR tui " (ncurses interactive screen)."
+.TP
+.BR \-s ", " \-\-style " \fIstyle\fR"
+Card display style:
+.BR unicode " (default, e.g. [A♠], [10♥]),"
+.BR ascii " (e.g. [AS], [10H])."
+.TP
+.BR \-g ", " \-\-game " \fImode\fR"
+Game match mode:
+.BR h-vs-ai " (Human vs AI, default),"
+.BR h-vs-h " (Human vs Human),"
+.BR ai-vs-ai " (AI vs AI simulation)."
+.TP
+.BR \-w ", " \-\-winning-score " \fIpoints\fR"
+Target match score required to win (default: 101).
+.TP
+.BR \-c ", " \-\-rounds " \fInumber\fR"
+Maximum number of deck cycles/rounds to play (default: 0 = unlimited, until target score).
+.TP
+.BR \-r ", " \-\-seed " \fInumber\fR"
+Seed for the pseudo-random number generator (default: current system epoch).
+.TP
+.BR \-T ", " \-\-tournament " \fItype\fR"
+Run a tournament directly:
+.BR round-robin " (all participants play each other),"
+.BR cup " or " knockout " (single-elimination tournament bracket)."
+.TP
+.BR \-p ", " \-\-profile " \fIname\fR"
+Active player profile name for persistent statistics and Elo rating updates.
+.TP
+.BR \-L ", " \-\-leaderboard
+Display the stored player Elo leaderboard and exit immediately.
+.TP
+.BR \-h ", " \-\-help
+Display the command-line usage summary and exit.
+
+.SH TOURNAMENT ARENA
+CTE includes a complete tournament engine capable of managing 2 to 16 participants:
+.TP
+.B Round Robin
+Every participant plays a match against every other participant. Final standings are ranked by match wins,
+lowest losses, total points scored, and total Tablićs.
+.TP
+.B Knockout Cup
+A single-elimination tournament bracket for powers of 2 (2, 4, 8, 16 participants). Sudden-death rounds are
+played if any match concludes in a tie, ensuring a decisive tournament champion.
+
+.SH PROFILES AND ELO RATING
+Player performance is tracked across games and tournaments:
+.IP \(bu 2
+Initial Elo rating is set to
+.B 1200.
+.IP \(bu 2
+Rating updates follow the standard logistic Elo formula with
+.B K = 32.
+.IP \(bu 2
+Profiles record total matches played, wins, losses, ties, total Tablićs, and points.
+.IP \(bu 2
+Storage is atomic via POSIX temporary file writes and renaming to prevent data corruption.
+
+.SH FILES
+.TP
+.I $XDG_DATA_HOME/cte/profiles.dat
+User profile and Elo database. Defaults to
+.I ~/.local/share/cte/profiles.dat
+if
+.B $XDG_DATA_HOME
+is unset.
+
+.SH EXAMPLES
+.TP
+.B cte
+Launch the full interactive ncurses TUI menu.
+.TP
+.B cte \-g h-vs-ai \-a greedy \-w 51
+Play a quick 2-player match against the Greedy AI to 51 points.
+.TP
+.B cte \-n 4 \-t \-a greedy,cheater,greedy
+Play a 4-player 2v2 team match.
+.TP
+.B cte \-T round-robin \-n 4 \-w 25
+Simulate a 4-bot Round Robin tournament to 25 points and display the standings table.
+.TP
+.B cte \-T cup \-n 8 \-p "Grandmaster"
+Participate in an 8-player Knockout Cup tracked under profile "Grandmaster".
+.TP
+.B cte \-\-leaderboard
+Print the current player Elo leaderboard.
+
+.SH AUTHORS
+Developed as part of the CTE Tablić Suite.
+
+.SH LICENSE
+GNU General Public License v3.0 (GPLv3).

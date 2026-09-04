@@ -316,6 +316,7 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
     match->is_team_mode = config->is_team_mode;
     match->game->is_team_mode = config->is_team_mode;
 
+    uint8_t zero_score_rounds = 0;
     while(!match_is_over(match)){
         if(config->callbacks && config->callbacks->on_round_start){
             config->callbacks->on_round_start(match->round_nb + 1, config->ui_context);
@@ -328,6 +329,7 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
         err = compute_round_score(&match->game->players, scores, match->is_team_mode);
         if(err != e_ok) return err;
 
+        uint16_t total_round_pts = 0;
         if(match->is_team_mode && match->game->players.size == 4){
             uint16_t team0_pts = (uint16_t)(scores[0].total + scores[2].total);
             uint16_t team1_pts = (uint16_t)(scores[1].total + scores[3].total);
@@ -335,9 +337,11 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
             match->match_scores[1] += team1_pts;
             match->match_scores[2] = match->match_scores[0];
             match->match_scores[3] = match->match_scores[1];
+            total_round_pts = team0_pts + team1_pts;
         } else {
             for(uint8_t i = 0; i < match->game->players.size; i++){
                 match->match_scores[i] += scores[i].total;
+                total_round_pts += scores[i].total;
             }
         }
 
@@ -347,6 +351,13 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
 
         match->round_nb++;
         reset_all_players(&match->game->players);
+
+        if(total_round_pts == 0){
+            zero_score_rounds++;
+            if(zero_score_rounds >= 3) break; // Break out of pathological stalled matches
+        } else {
+            zero_score_rounds = 0;
+        }
     }
 
     if(config->callbacks && config->callbacks->on_match_end){

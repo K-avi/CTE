@@ -18,4 +18,7 @@ typedef struct {
 // Main TUI game runner
 int run_tui_frontend(const s_cte_tui_config *config);
 
+// Interactive TUI Main Menu
+int run_tui_main_menu(void);
+
 #endif

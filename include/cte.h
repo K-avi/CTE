@@ -9,6 +9,8 @@
 #include "minmax.h"
 #include "engine.h"
 #include "game.h"
+#include "tournament.h"
+#include "profile.h"
 #include "front_cli.h"
 #include "front_tui.h"
 

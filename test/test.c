@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 // Static instances for isolated unit tests
 static uint64_t table;
@@ -740,6 +741,176 @@ int main(){
     s_cte_pos rnk_pos = pos_from_game(&rnk_game);
     assert(rnk_pos.nb_players == 2);
     free_game(&rnk_game);
+
+    // ---- T27 : Tournament Engine (Round Robin & Knockout) ----
+    {
+        // 1. Error handling on init
+        s_cte_tournament t_err;
+        s_cte_tournament_config cfg_err = {0};
+        assert(init_tournament(NULL, &cfg_err) == e_null);
+        assert(init_tournament(&t_err, NULL) == e_null);
+
+        cfg_err.nb_participants = 1;
+        assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+        cfg_err.nb_participants = 17;
+        assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+        cfg_err.type = TOURNAMENT_KNOCKOUT;
+        cfg_err.nb_participants = 3; // Not a power of 2
+        assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+        cfg_err.nb_participants = 6; // Not a power of 2
+        assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+        // 2. Round-Robin Tournament (4 AI participants)
+        s_cte_tournament t_rr;
+        s_cte_tournament_config cfg_rr = {
+            .type = TOURNAMENT_ROUND_ROBIN,
+            .nb_participants = 4,
+            .winning_score = 15,
+            .max_rounds = 1,
+            .silent = true,
+            .participants = {
+                { .name = "Bot_Greedy",  .evaluator = eval_greedy,  .is_human = false },
+                { .name = "Bot_Cheater", .evaluator = eval_cheater, .is_human = false },
+                { .name = "Bot_Random",  .evaluator = eval_random,  .is_human = false },
+                { .name = "Bot_Dumb",    .evaluator = eval_dumb,    .is_human = false },
+            },
+        };
+
+        err = init_tournament(&t_rr, &cfg_rr);
+        assert(err == e_ok);
+        assert(t_rr.config.nb_participants == 4);
+
+        err = run_tournament(&t_rr);
+        assert(err == e_ok);
+        // In 4-player round robin: 4 * 3 / 2 = 6 matches
+        assert(t_rr.nb_matches == 6);
+        for(int i = 0; i < 4; i++){
+            assert(t_rr.config.participants[i].matches_played == 3);
+            assert(t_rr.config.participants[i].matches_won +
+                   t_rr.config.participants[i].matches_lost +
+                   t_rr.config.participants[i].matches_tied == 3);
+        }
+        assert(t_rr.champion_idx >= 0 && t_rr.champion_idx < 4);
+        assert(t_rr.standings[0] == (uint8_t)t_rr.champion_idx);
+
+        // Verify standings print doesn't crash
+        print_tournament_standings(&t_rr, CTE_RENDER_ASCII);
+        free_tournament(&t_rr);
+
+        // 3. Knockout Tournament (4 AI participants)
+        s_cte_tournament t_ko;
+        s_cte_tournament_config cfg_ko = {
+            .type = TOURNAMENT_KNOCKOUT,
+            .nb_participants = 4,
+            .winning_score = 15,
+            .max_rounds = 1,
+            .silent = true,
+            .participants = {
+                { .name = "Cup_Greedy",  .evaluator = eval_greedy,  .is_human = false },
+                { .name = "Cup_Cheater", .evaluator = eval_cheater, .is_human = false },
+                { .name = "Cup_Random",  .evaluator = eval_random,  .is_human = false },
+                { .name = "Cup_Dumb",    .evaluator = eval_dumb,    .is_human = false },
+            },
+        };
+
+        err = init_tournament(&t_ko, &cfg_ko);
+        assert(err == e_ok);
+
+        err = run_tournament(&t_ko);
+        assert(err == e_ok);
+        // In 4-player knockout: 2 semifinals + 1 final = 3 matches
+        assert(t_ko.nb_matches == 3);
+        assert(t_ko.champion_idx >= 0 && t_ko.champion_idx < 4);
+        // Champion must have won exactly 2 matches
+        assert(t_ko.config.participants[t_ko.champion_idx].matches_won == 2);
+        // Loser in finals played 2 matches (won 1, lost 1)
+        // Two losers in semifinals played 1 match (lost 1)
+
+        print_tournament_standings(&t_ko, CTE_RENDER_ASCII);
+        free_tournament(&t_ko);
+    }
+
+    // ---- T28 : Player Profiles & Elo Rating System ----
+    {
+        const char *test_db_path = "/tmp/cte_test_profiles.dat";
+        unlink(test_db_path);
+
+        s_cte_profile_db db;
+        err = init_profile_db(&db, test_db_path);
+        assert(err == e_ok);
+        assert(db.count == 0);
+
+        // find non-existent
+        assert(find_profile(&db, "Alice") == NULL);
+
+        // create Alice & Bob
+        s_cte_profile *p_alice = find_or_create_profile(&db, "Alice");
+        assert(p_alice != NULL);
+        assert(db.count == 1);
+        assert(p_alice->elo == CTE_DEFAULT_ELO);
+        assert(p_alice->matches_played == 0);
+        assert(strcmp(p_alice->name, "Alice") == 0);
+
+        s_cte_profile *p_bob = find_or_create_profile(&db, "Bob");
+        assert(p_bob != NULL);
+        assert(db.count == 2);
+        assert(p_bob->elo == CTE_DEFAULT_ELO);
+
+        // case-insensitive lookup
+        s_cte_profile *p_alice_lookup = find_or_create_profile(&db, "alice");
+        assert(p_alice_lookup == p_alice);
+        assert(db.count == 2);
+
+        // Match 1: Alice beats Bob (k_factor = 32)
+        // Expected: delta = +16 for Alice, -16 for Bob
+        update_match_elo(p_alice, p_bob, 0, 32);
+        assert(p_alice->elo == 1216);
+        assert(p_bob->elo == 1184);
+        assert(p_alice->matches_played == 1);
+        assert(p_alice->matches_won == 1);
+        assert(p_alice->matches_lost == 0);
+        assert(p_bob->matches_played == 1);
+        assert(p_bob->matches_won == 0);
+        assert(p_bob->matches_lost == 1);
+
+        // Match 2: Tie between Alice (1216) and Bob (1184)
+        update_match_elo(p_alice, p_bob, -1, 32);
+        assert(p_alice->matches_played == 2);
+        assert(p_alice->matches_tied == 1);
+        assert(p_bob->matches_played == 2);
+        assert(p_bob->matches_tied == 1);
+        // Alice had advantage, so tie slightly reduces Alice and boosts Bob
+        assert(p_alice->elo < 1216);
+        assert(p_bob->elo > 1184);
+
+        // Persistence test
+        err = save_profiles(&db);
+        assert(err == e_ok);
+
+        s_cte_profile_db db_reload;
+        err = init_profile_db(&db_reload, test_db_path);
+        assert(err == e_ok);
+        assert(db_reload.count == 2);
+
+        s_cte_profile *r_alice = find_profile(&db_reload, "Alice");
+        s_cte_profile *r_bob = find_profile(&db_reload, "Bob");
+        assert(r_alice != NULL && r_bob != NULL);
+        assert(r_alice->elo == p_alice->elo);
+        assert(r_bob->elo == p_bob->elo);
+        assert(r_alice->matches_played == 2);
+
+        // Sorting test
+        sort_profiles_by_elo(&db_reload);
+        assert(db_reload.profiles[0].elo >= db_reload.profiles[1].elo);
+        assert(strcmp(db_reload.profiles[0].name, "Alice") == 0);
+
+        print_leaderboard(&db_reload);
+
+        unlink(test_db_path);
+    }
 
     free_game(&game_ai);
     free_game(&game);
