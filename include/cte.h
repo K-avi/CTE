@@ -7,9 +7,9 @@
 #include "move.h"
 #include "eval.h"
 #include "minmax.h"
+#include "engine.h"
 #include "game.h"
 #include "front_cli.h"
 #include "front_tui.h"
-#include "engine.h"
 
 #endif

@@ -191,7 +191,8 @@ int main(){
     printf("[BT4] Running 500 complete multi-player rounds via SWAR Bitboard Backend...\n");
     s_cte_game game_bb;
     char *names_bb[4] = { "Rank_A", "Rank_B", "Rank_C", "Rank_D" };
-    be_bb->init_game(&game_bb, 4, names_bb, true);
+    init_game(&game_bb, 4, names_bb, true);
+    assert(game_bb.backend == be_bb);
 
     s_cte_round_config r_cfg = {
         .first_player  = 0,
@@ -204,7 +205,7 @@ int main(){
         reset_all_players(&game_bb.players);
         srand(s * 13 + 37);
 
-        t_cteerr err = be_bb->run_round(&game_bb, &r_cfg);
+        t_cteerr err = run_round(&game_bb, &r_cfg);
         assert(err == e_ok);
         assert(game_bb.deck.cur_card == 52);
         assert(game_bb.table_bb == 0);
@@ -220,7 +221,7 @@ int main(){
         assert(total_c == 52);
         assert(total_pts == 22);
     }
-    be_bb->free_game(&game_bb);
+    free_game(&game_bb);
     printf("      -> PASS: 500 / 500 rounds completed with strict card and points conservation.\n\n");
 
     printf("=======================================================\n");

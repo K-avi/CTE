@@ -433,9 +433,6 @@ int run_tui_frontend(const s_cte_tui_config *config){
         return 1;
     }
 
-    // Use SWAR bitboard backend by default
-    game.backend = cte_get_backend(CTE_BACKEND_BITBOARD);
-
     for(uint8_t i = 0; i < nb_p; i++){
         game.players.players[i].is_human = slot_is_human[i];
         game.players.players[i].evaluator = slot_evaluators[i];

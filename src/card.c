@@ -45,8 +45,8 @@ void init_deck(struct deck *d){
 
 void shuffle_deck(struct deck *d){
     if(!d) return;
-    for(uint8_t i = 0; i < 52; i++){
-        uint8_t j = (uint8_t)(rand() % 52);
+    for(int i = 51; i > 0; i--){
+        int j = rand() % (i + 1);
         t_card tmp = d->cards[i];
         d->cards[i] = d->cards[j];
         d->cards[j] = tmp;

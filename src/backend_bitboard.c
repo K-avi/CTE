@@ -350,34 +350,10 @@ t_cteerr bitboard_gen_all_moves_rank(struct s_cte_move_list *moves, uint64_t tab
     return e_ok;
 }
 
-static s_cte_pos bitboard_backend_to_pos(const s_cte_game *game){
-    if(!game){
-        s_cte_pos empty = {0};
-        return empty;
-    }
-    s_cte_game_state st = {
-        .table_bb          = game->table_bb,
-        .players           = &game->players,
-        .deck              = &game->deck,
-        .current_player_id = game->current_player_id,
-        .is_team_mode      = game->is_team_mode,
-    };
-    return pos_from_state(&st);
-}
-
 const s_cte_engine_backend g_backend_bitboard = {
-    .type            = CTE_BACKEND_BITBOARD,
-    .name            = "Bitboard SWAR (default)",
-    .init_game       = init_game,
-    .free_game       = free_game,
-    .setup_round     = setup_round,
-    .deal_next_hand  = deal_next_hand,
-    .award_remaining = award_remaining_table_cards,
-    .run_round       = run_round,
-    .is_legal        = is_legal,
-    .gen_card_moves  = bitboard_gen_card_moves_rank,
-    .gen_all_moves   = bitboard_gen_all_moves_rank,
-    .play_move       = play_move,
-    .score_move      = score_move,
-    .to_pos          = bitboard_backend_to_pos,
+    .type           = CTE_BACKEND_BITBOARD,
+    .name           = "Bitboard SWAR (default)",
+    .is_legal       = is_legal,
+    .gen_card_moves = bitboard_gen_card_moves_rank,
+    .gen_all_moves  = bitboard_gen_all_moves_rank,
 };

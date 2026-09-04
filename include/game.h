@@ -5,13 +5,12 @@
 #include "player.h"
 #include "move.h"
 #include "eval.h"
-
-// Forward declaration
-struct s_cte_engine_backend;
+#include "minmax.h"
+#include "engine.h"
 
 // Reentrant game structure containing all state
 typedef struct s_cte_game {
-    const struct s_cte_engine_backend *backend;           // Active backend (NULL = array fallback)
+    const s_cte_engine_backend *backend;           // Active backend (defaults to SWAR bitboard)
     struct deck                       deck;               // Sabot de 52 cartes
     uint64_t                          table_bb;           // 64-bit mask des cartes actives sur la table
     struct s_cte_players              players;            // Joueurs, mains et cartes remportées
@@ -51,6 +50,8 @@ typedef struct s_cte_ui_callbacks {
 // Game lifecycle & dealing
 t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_team_mode);
 void     free_game(s_cte_game *game);
+t_cteerr cte_set_backend(s_cte_game *game, e_cte_backend_type type);
+s_cte_pos pos_from_game(const s_cte_game *game);
 t_cteerr setup_round(s_cte_game *game);
 t_cteerr deal_next_hand(s_cte_game *game);
 t_cteerr award_remaining_table_cards(s_cte_game *game);

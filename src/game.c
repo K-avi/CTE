@@ -1,5 +1,4 @@
 #include "game.h"
-#include "engine.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,7 +7,7 @@ t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_
     if(nb_players < 2 || nb_players > 4) return e_inval_val;
 
     memset(game, 0, sizeof(s_cte_game));
-    game->backend = NULL; // Will be set by caller; NULL = use direct array calls (backward compat)
+    game->backend = cte_get_backend(CTE_BACKEND_BITBOARD);
     game->is_team_mode = is_team_mode;
     game->last_captor_id = -1;
     game->current_player_id = 0;
@@ -21,6 +20,29 @@ t_cteerr init_game(s_cte_game *game, uint8_t nb_players, char *names[], bool is_
 void free_game(s_cte_game *game){
     if(!game) return;
     free_players(&game->players);
+}
+
+t_cteerr cte_set_backend(s_cte_game *game, e_cte_backend_type type){
+    if(!game) return e_null;
+    game->backend = cte_get_backend(type);
+    return e_ok;
+}
+
+s_cte_pos pos_from_game(const s_cte_game *game){
+    if(!game){
+        s_cte_pos empty = {0};
+        return empty;
+    }
+    s_cte_game_state st = {
+        .table_bb          = game->table_bb,
+        .players           = (struct s_cte_players*)&game->players,
+        .deck              = (struct deck*)&game->deck,
+        .current_player_id = game->current_player_id,
+        .is_team_mode      = game->is_team_mode,
+    };
+    s_cte_pos pos = pos_from_state(&st);
+    pos.last_captor = game->last_captor_id;
+    return pos;
 }
 
 t_cteerr setup_round(s_cte_game *game){
@@ -90,6 +112,8 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
     if(!game || !config) return e_null;
     if(game->players.size < 2 || game->players.size > 4) return e_inval_val;
 
+    const s_cte_engine_backend *be = game->backend ? game->backend : cte_get_backend(CTE_BACKEND_BITBOARD);
+
     for(uint8_t i = 0; i < game->players.size; i++){
         t_evaluator eval_func = game->players.players[i].evaluator ? game->players.players[i].evaluator : config->evaluators[i];
         if(!eval_func) return e_null;
@@ -134,8 +158,8 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
         err = init_move_list(&moves, 16);
         if(err != e_ok) return err;
 
-        if(game->backend && game->backend->gen_all_moves)
-            err = game->backend->gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
+        if(be->gen_all_moves)
+            err = be->gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
         else
             err = gen_all_moves(&moves, game->table_bb, &game->players.players[current].hand);
         if(err != e_ok){ free_move_list(&moves); return err; }
@@ -159,10 +183,7 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
 
         struct s_cte_move chosen_move = moves.moves[chosen_idx];
         bool captured = false;
-        if(game->backend && game->backend->play_move)
-            err = game->backend->play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
-        else
-            err = play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
+        err = play_move(&game->table_bb, &chosen_move, &game->players.players[current], &captured);
 
         if(config->callbacks && config->callbacks->on_move_played){
             config->callbacks->on_move_played(&game->players.players[current], &chosen_move, captured, config->ui_context);
