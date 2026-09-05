@@ -2,9 +2,13 @@
 #define __CTE_PROFILE_H
 
 #include "card.h"
+#include "eval.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+
+struct s_cte_match;
+struct s_cte_players;
 
 #define CTE_MAX_PROFILES 128
 #define CTE_PROFILE_NAME_MAX 32
@@ -44,6 +48,24 @@ s_cte_profile* find_or_create_profile(s_cte_profile_db *db, const char *name);
 int16_t compute_elo_delta(int16_t elo_self, int16_t elo_opponent,
                           double score, uint8_t k_factor);
 void update_match_elo(s_cte_profile *p1, s_cte_profile *p2, int8_t winner_idx, uint8_t k_factor);
+
+// Match result profile consolidation
+t_cteerr record_match_result_in_profile_path(const char *profile_name,
+                                             const struct s_cte_match *match,
+                                             const struct s_cte_players *players,
+                                             const e_cte_ai_type *ai_types,
+                                             uint8_t nb_ai_types,
+                                             s_cte_profile *out_profile,
+                                             int16_t *out_delta,
+                                             const char *custom_path);
+
+t_cteerr record_match_result_in_profile(const char *profile_name,
+                                        const struct s_cte_match *match,
+                                        const struct s_cte_players *players,
+                                        const e_cte_ai_type *ai_types,
+                                        uint8_t nb_ai_types,
+                                        s_cte_profile *out_profile,
+                                        int16_t *out_delta);
 
 // Ranking & visualization
 void sort_profiles_by_elo(s_cte_profile_db *db);

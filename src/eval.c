@@ -75,3 +75,22 @@ uint16_t eval_cheater(const s_cte_game_state *state,
 
     return search_best_move(&pos, moves, &cfg);
 }
+
+t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){
+    switch(type){
+        case AI_TYPE_DUMB:
+            if(name_out) *name_out = "Dumb";
+            return eval_dumb;
+        case AI_TYPE_GREEDY:
+            if(name_out) *name_out = "Greedy";
+            return eval_greedy;
+        case AI_TYPE_CHEATER:
+            if(name_out) *name_out = "Cheater";
+            return eval_cheater;
+        case AI_TYPE_RANDOM:
+        default:
+            if(name_out) *name_out = "Random";
+            return eval_random;
+    }
+}
+

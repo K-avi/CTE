@@ -31,7 +31,7 @@ typedef struct {
 
 typedef struct {
   bool          is_human;
-  e_cli_ai_type ai_type;
+  e_cte_ai_type ai_type;
   char          name[32];
 } s_tui_participant_slot;
 
@@ -384,29 +384,6 @@ static const s_cte_ui_callbacks g_tui_callbacks = {
     .on_match_end = tui_on_match_end,
 };
 
-static t_evaluator tui_get_evaluator(e_cli_ai_type type,
-                                     const char **name_out) {
-  switch (type) {
-  case AI_TYPE_DUMB:
-    if (name_out)
-      *name_out = "Dumb";
-    return eval_dumb;
-  case AI_TYPE_GREEDY:
-    if (name_out)
-      *name_out = "Greedy";
-    return eval_greedy;
-  case AI_TYPE_CHEATER:
-    if (name_out)
-      *name_out = "Cheater";
-    return eval_cheater;
-  case AI_TYPE_RANDOM:
-  default:
-    if (name_out)
-      *name_out = "Random";
-    return eval_random;
-  }
-}
-
 int run_tui_frontend(const s_cte_tui_config *config) {
   if (!config)
     return 1;
@@ -464,7 +441,7 @@ int run_tui_frontend(const s_cte_tui_config *config) {
         uint8_t ai_idx = (config->nb_ai_types > 1) ? (uint8_t)(i - 1) : 0;
         const char *strat_name = NULL;
         slot_evaluators[i] =
-            tui_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
+            cte_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
         snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)i,
                  strat_name);
       }
@@ -473,7 +450,7 @@ int run_tui_frontend(const s_cte_tui_config *config) {
       uint8_t ai_idx = (config->nb_ai_types > 1) ? i : 0;
       const char *strat_name = NULL;
       slot_evaluators[i] =
-          tui_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
+          cte_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
       snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)(i + 1),
                strat_name);
     }
@@ -539,44 +516,8 @@ int run_tui_frontend(const s_cte_tui_config *config) {
   }
 
   if (err == e_ok && config->profile_name[0] != '\0' && config->game_type != GAME_AI_VS_AI) {
-    s_cte_profile_db db;
-    if (init_profile_db(&db, NULL) == e_ok) {
-      s_cte_profile *p = find_or_create_profile(&db, config->profile_name);
-      if (p) {
-        p->total_points += match.match_scores[0];
-        p->total_tablics += match.match_tablics[0];
-        p->matches_played++;
-
-        int16_t opp_elo = CTE_DEFAULT_ELO;
-        if (config->nb_players >= 2) {
-          if (!game.players.players[1].is_human && config->nb_ai_types > 0) {
-            opp_elo = cte_default_ai_elo(config->ai_types[0]);
-          } else {
-            s_cte_profile *opp_p = find_profile(&db, names[1]);
-            if (opp_p) opp_elo = opp_p->elo;
-          }
-        }
-
-        uint16_t s0 = match.match_scores[0];
-        uint16_t s1 = (config->nb_players >= 2) ? match.match_scores[1] : 0;
-        double score = 0.5;
-        if (s0 > s1) {
-          p->matches_won++;
-          score = 1.0;
-        } else if (s1 > s0) {
-          p->matches_lost++;
-          score = 0.0;
-        } else {
-          p->matches_tied++;
-          score = 0.5;
-        }
-
-        p->elo += compute_elo_delta(p->elo, opp_elo, score, CTE_DEFAULT_K_FACTOR);
-        if (p->elo < 100) p->elo = 100;
-        p->last_played_at = (uint64_t)time(NULL);
-        save_profiles(&db);
-      }
-    }
+    record_match_result_in_profile(config->profile_name, &match, &game.players,
+                                   config->ai_types, config->nb_ai_types, NULL, NULL);
   }
 
   if (err != e_ok) {
@@ -620,7 +561,7 @@ static void tui_menu_quick_match(void) {
   uint8_t players = 2;
   e_cli_game_type gtype = GAME_HUMAN_VS_AI;
   bool team_mode = false;
-  e_cli_ai_type ai_strat = AI_TYPE_GREEDY;
+  e_cte_ai_type ai_strat = AI_TYPE_GREEDY;
   uint16_t win_score = 101;
   e_cte_render_style style = CTE_RENDER_UNICODE;
   char profile_name[32] = {0};
@@ -1052,7 +993,7 @@ static void tui_menu_tournament(void) {
             cfg.participants[i].eval_context = &ui_ctx;
           } else {
             const char *dummy = NULL;
-            cfg.participants[i].evaluator = tui_get_evaluator(slots[i].ai_type, &dummy);
+            cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);
             cfg.participants[i].eval_context = NULL;
           }
         }

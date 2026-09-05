@@ -12,11 +12,14 @@ typedef enum {
 } e_cli_game_type;
 
 typedef enum {
-    AI_TYPE_RANDOM,
-    AI_TYPE_DUMB,
-    AI_TYPE_GREEDY,
-    AI_TYPE_CHEATER
-} e_cli_ai_type;
+    AI_TYPE_RANDOM  = 0,
+    AI_TYPE_DUMB    = 1,
+    AI_TYPE_GREEDY  = 2,
+    AI_TYPE_CHEATER = 3,
+} e_cte_ai_type;
+
+// Backward-compatibility alias
+typedef e_cte_ai_type e_cli_ai_type;
 
 // Snapshot of game state passed to evaluators
 typedef struct s_cte_game_state {
@@ -64,7 +67,10 @@ uint16_t eval_cheater(const s_cte_game_state *state,
                       const struct s_cte_move_list *moves,
                       void *ctx);
 
-static inline int16_t cte_default_ai_elo(e_cli_ai_type type){
+// Resolve evaluator function and optional display name from AI type
+t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out);
+
+static inline int16_t cte_default_ai_elo(e_cte_ai_type type){
     switch(type){
         case AI_TYPE_RANDOM:  return 800;
         case AI_TYPE_DUMB:    return 900;

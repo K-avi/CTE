@@ -18,7 +18,7 @@ typedef struct {
     t_evaluator   evaluator;
     void         *eval_context;
     bool          is_human;
-    e_cli_ai_type ai_type;
+    e_cte_ai_type ai_type;
     uint16_t      matches_played;
     uint16_t      matches_won;
     uint16_t      matches_lost;

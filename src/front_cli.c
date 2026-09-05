@@ -187,24 +187,6 @@ const s_cte_ui_callbacks *cli_get_callbacks(void){
     return &g_cli_callbacks;
 }
 
-static t_evaluator get_evaluator(e_cli_ai_type type, const char **name_out){
-    switch(type){
-        case AI_TYPE_DUMB:
-            if(name_out) *name_out = "Dumb";
-            return eval_dumb;
-        case AI_TYPE_GREEDY:
-            if(name_out) *name_out = "Greedy";
-            return eval_greedy;
-        case AI_TYPE_CHEATER:
-            if(name_out) *name_out = "Cheater";
-            return eval_cheater;
-        case AI_TYPE_RANDOM:
-        default:
-            if(name_out) *name_out = "Random";
-            return eval_random;
-    }
-}
-
 int run_cli_frontend(const s_cte_cli_config *config){
     if(!config) return 1;
 
@@ -244,14 +226,14 @@ int run_cli_frontend(const s_cte_cli_config *config){
                 slot_is_human[i] = false;
                 uint8_t ai_idx = (config->nb_ai_types > 1) ? (uint8_t)(i - 1) : 0;
                 const char *strat_name = NULL;
-                slot_evaluators[i] = get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
+                slot_evaluators[i] = cte_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
                 snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)i, strat_name);
             }
         } else { // AI vs AI
             slot_is_human[i] = false;
             uint8_t ai_idx = (config->nb_ai_types > 1) ? i : 0;
             const char *strat_name = NULL;
-            slot_evaluators[i] = get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
+            slot_evaluators[i] = cte_get_evaluator(config->ai_types[ai_idx % 4], &strat_name);
             snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)(i + 1), strat_name);
         }
 
@@ -320,50 +302,15 @@ int run_cli_frontend(const s_cte_cli_config *config){
     }
 
     if(err == e_ok && config->profile_name[0] != '\0' && config->game_type != GAME_AI_VS_AI){
-        s_cte_profile_db db;
-        if(init_profile_db(&db, NULL) == e_ok){
-            s_cte_profile *p = find_or_create_profile(&db, config->profile_name);
-            if(p){
-                p->total_points += match.match_scores[0];
-                p->total_tablics += match.match_tablics[0];
-                p->matches_played++;
-
-                int16_t opp_elo = CTE_DEFAULT_ELO;
-                if(config->nb_players >= 2){
-                    if(!game.players.players[1].is_human && config->nb_ai_types > 0){
-                        opp_elo = cte_default_ai_elo(config->ai_types[0]);
-                    } else {
-                        s_cte_profile *opp_p = find_profile(&db, names[1]);
-                        if(opp_p) opp_elo = opp_p->elo;
-                    }
-                }
-
-                uint16_t s0 = match.match_scores[0];
-                uint16_t s1 = (config->nb_players >= 2) ? match.match_scores[1] : 0;
-                double score = 0.5;
-                if(s0 > s1){
-                    p->matches_won++;
-                    score = 1.0;
-                } else if(s1 > s0){
-                    p->matches_lost++;
-                    score = 0.0;
-                } else {
-                    p->matches_tied++;
-                    score = 0.5;
-                }
-
-                int16_t delta = compute_elo_delta(p->elo, opp_elo, score, CTE_DEFAULT_K_FACTOR);
-                int16_t old_elo = p->elo;
-                p->elo += delta;
-                if(p->elo < 100) p->elo = 100;
-                p->last_played_at = (uint64_t)time(NULL);
-
-                save_profiles(&db);
-                printf("\n[Profile] '%s' updated: Elo %d -> %d (%+d), Matches: %u (W:%u L:%u D:%u)\n",
-                       p->name, (int)old_elo, (int)p->elo, (int)delta,
-                       (unsigned)p->matches_played, (unsigned)p->matches_won,
-                       (unsigned)p->matches_lost, (unsigned)p->matches_tied);
-            }
+        s_cte_profile p;
+        int16_t delta = 0;
+        if(record_match_result_in_profile(config->profile_name, &match, &game.players,
+                                          config->ai_types, config->nb_ai_types,
+                                          &p, &delta) == e_ok){
+            printf("\n[Profile] '%s' updated: Elo %d -> %d (%+d), Matches: %u (W:%u L:%u D:%u)\n",
+                   p.name, (int)(p.elo - delta), (int)p.elo, (int)delta,
+                   (unsigned)p.matches_played, (unsigned)p.matches_won,
+                   (unsigned)p.matches_lost, (unsigned)p.matches_tied);
         }
     }
 

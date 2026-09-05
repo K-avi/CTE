@@ -1206,6 +1206,89 @@ int main(){
         unlink(t33_db_path);
     }
 
+    // ---- T34 : Unification des evaluateurs (cte_get_evaluator) & consolidation de profil de match ----
+    {
+        // 1. Validation de cte_get_evaluator
+        const char *name = NULL;
+        assert(cte_get_evaluator(AI_TYPE_RANDOM, &name) == eval_random);
+        assert(name != NULL && strcmp(name, "Random") == 0);
+
+        name = NULL;
+        assert(cte_get_evaluator(AI_TYPE_DUMB, &name) == eval_dumb);
+        assert(name != NULL && strcmp(name, "Dumb") == 0);
+
+        name = NULL;
+        assert(cte_get_evaluator(AI_TYPE_GREEDY, &name) == eval_greedy);
+        assert(name != NULL && strcmp(name, "Greedy") == 0);
+
+        name = NULL;
+        assert(cte_get_evaluator(AI_TYPE_CHEATER, &name) == eval_cheater);
+        assert(name != NULL && strcmp(name, "Cheater") == 0);
+
+        // Fallback default
+        name = NULL;
+        assert(cte_get_evaluator((e_cte_ai_type)99, &name) == eval_random);
+        assert(name != NULL && strcmp(name, "Random") == 0);
+
+        // Support name_out == NULL
+        assert(cte_get_evaluator(AI_TYPE_GREEDY, NULL) == eval_greedy);
+
+        // 2. Validation de record_match_result_in_profile_path
+        const char *t34_db_path = "./t34_test_profiles.dat";
+        unlink(t34_db_path);
+
+        // Bad argument checks
+        struct s_cte_match mock_match;
+        memset(&mock_match, 0, sizeof(mock_match));
+        mock_match.match_scores[0] = 105;
+        mock_match.match_scores[1] = 80;
+        mock_match.match_tablics[0] = 2;
+        mock_match.match_tablics[1] = 0;
+
+        struct s_cte_player_data pdata[2];
+        memset(pdata, 0, sizeof(pdata));
+        pdata[0].player_name = "Alice";
+        pdata[0].is_human = true;
+        pdata[1].player_name = "Bot Greedy";
+        pdata[1].is_human = false;
+
+        struct s_cte_players mock_players;
+        memset(&mock_players, 0, sizeof(mock_players));
+        mock_players.size = 2;
+        mock_players.players = pdata;
+
+        e_cte_ai_type ai_types[1] = { AI_TYPE_GREEDY };
+
+        assert(record_match_result_in_profile_path(NULL, &mock_match, &mock_players, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
+        assert(record_match_result_in_profile_path("", &mock_match, &mock_players, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
+        assert(record_match_result_in_profile_path("Alice", NULL, &mock_players, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
+        assert(record_match_result_in_profile_path("Alice", &mock_match, NULL, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
+
+        // Match win against AI Greedy (opp_elo = 1400, Alice starting elo = 1200)
+        s_cte_profile out_p;
+        int16_t delta = 0;
+        assert(record_match_result_in_profile_path("Alice", &mock_match, &mock_players, ai_types, 1, &out_p, &delta, t34_db_path) == e_ok);
+        assert(strcmp(out_p.name, "Alice") == 0);
+        assert(out_p.matches_played == 1);
+        assert(out_p.matches_won == 1);
+        assert(out_p.matches_lost == 0);
+        assert(out_p.matches_tied == 0);
+        assert(out_p.total_points == 105);
+        assert(out_p.total_tablics == 2);
+        assert(delta > 0);
+        assert(out_p.elo == (int16_t)(CTE_DEFAULT_ELO + delta));
+
+        // Persistence check
+        s_cte_profile_db db_check;
+        assert(init_profile_db(&db_check, t34_db_path) == e_ok);
+        s_cte_profile *p_read = find_profile(&db_check, "Alice");
+        assert(p_read != NULL);
+        assert(p_read->matches_played == 1);
+        assert(p_read->elo == out_p.elo);
+
+        unlink(t34_db_path);
+    }
+
     free_game(&game_ai);
     free_game(&game);
 

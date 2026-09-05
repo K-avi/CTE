@@ -1,4 +1,5 @@
 #include "profile.h"
+#include "game.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -289,4 +290,74 @@ void print_leaderboard(const s_cte_profile_db *db){
         }
     }
     printf("=========================================================================================\n\n");
+}
+
+t_cteerr record_match_result_in_profile_path(const char *profile_name,
+                                             const struct s_cte_match *match,
+                                             const struct s_cte_players *players,
+                                             const e_cte_ai_type *ai_types,
+                                             uint8_t nb_ai_types,
+                                             s_cte_profile *out_profile,
+                                             int16_t *out_delta,
+                                             const char *custom_path)
+{
+    if(!profile_name || profile_name[0] == '\0' || !match || !players) return e_null;
+
+    s_cte_profile_db db;
+    t_cteerr err = init_profile_db(&db, custom_path);
+    if(err != e_ok) return err;
+
+    s_cte_profile *p = find_or_create_profile(&db, profile_name);
+    if(!p) return e_inval_val;
+
+    p->total_points += match->match_scores[0];
+    p->total_tablics += match->match_tablics[0];
+    p->matches_played++;
+
+    int16_t opp_elo = CTE_DEFAULT_ELO;
+    if(players->size >= 2){
+        if(!players->players[1].is_human && nb_ai_types > 0 && ai_types != NULL){
+            opp_elo = cte_default_ai_elo(ai_types[0]);
+        } else {
+            s_cte_profile *opp_p = find_profile(&db, players->players[1].player_name);
+            if(opp_p) opp_elo = opp_p->elo;
+        }
+    }
+
+    uint16_t s0 = match->match_scores[0];
+    uint16_t s1 = (players->size >= 2) ? match->match_scores[1] : 0;
+    double score = 0.5;
+    if(s0 > s1){
+        p->matches_won++;
+        score = 1.0;
+    } else if(s1 > s0){
+        p->matches_lost++;
+        score = 0.0;
+    } else {
+        p->matches_tied++;
+        score = 0.5;
+    }
+
+    int16_t delta = compute_elo_delta(p->elo, opp_elo, score, CTE_DEFAULT_K_FACTOR);
+    p->elo += delta;
+    if(p->elo < 100) p->elo = 100;
+    p->last_played_at = (uint64_t)time(NULL);
+
+    if(out_delta) *out_delta = delta;
+    if(out_profile) *out_profile = *p;
+
+    return save_profiles(&db);
+}
+
+t_cteerr record_match_result_in_profile(const char *profile_name,
+                                        const struct s_cte_match *match,
+                                        const struct s_cte_players *players,
+                                        const e_cte_ai_type *ai_types,
+                                        uint8_t nb_ai_types,
+                                        s_cte_profile *out_profile,
+                                        int16_t *out_delta)
+{
+    return record_match_result_in_profile_path(profile_name, match, players,
+                                               ai_types, nb_ai_types,
+                                               out_profile, out_delta, NULL);
 }

@@ -39,7 +39,7 @@ static void print_usage(const char *prog_name){
     printf("  -h, --help                 Display this help message and exit\n\n");
 }
 
-static bool parse_ai_strategy(const char *token, e_cli_ai_type *type_out){
+static bool parse_ai_strategy(const char *token, e_cte_ai_type *type_out){
     if(strcmp(token, "random") == 0){
         *type_out = AI_TYPE_RANDOM; return true;
     } else if(strcmp(token, "dumb") == 0){
@@ -50,16 +50,6 @@ static bool parse_ai_strategy(const char *token, e_cli_ai_type *type_out){
         *type_out = AI_TYPE_CHEATER; return true;
     }
     return false;
-}
-
-static t_evaluator eval_from_ai_type(e_cli_ai_type type){
-    switch(type){
-        case AI_TYPE_DUMB:    return eval_dumb;
-        case AI_TYPE_GREEDY:  return eval_greedy;
-        case AI_TYPE_CHEATER: return eval_cheater;
-        case AI_TYPE_RANDOM:
-        default:              return eval_random;
-    }
 }
 
 int main(int argc, char **argv){
@@ -101,7 +91,7 @@ int main(int argc, char **argv){
     typedef struct {
         char          name[32];
         bool          is_human;
-        e_cli_ai_type ai_type;
+        e_cte_ai_type ai_type;
     } s_cli_participant_spec;
 
     s_cli_participant_spec cli_participants[CTE_MAX_TOURNAMENT_PLAYERS];
@@ -155,7 +145,7 @@ int main(int argc, char **argv){
                 char *token = strtok_r(arg_copy, ",", &saveptr);
                 cli_config.nb_ai_types = 0;
                 while(token && cli_config.nb_ai_types < 4){
-                    e_cli_ai_type type;
+                    e_cte_ai_type type;
                     if(!parse_ai_strategy(token, &type)){
                         fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater\n", token);
                         free(arg_copy);
@@ -350,7 +340,7 @@ int main(int argc, char **argv){
                 if(cli_participants[i].is_human){
                     t_cfg.participants[i].evaluator = cli_read_human_move;
                 } else {
-                    t_cfg.participants[i].evaluator = eval_from_ai_type(cli_participants[i].ai_type);
+                    t_cfg.participants[i].evaluator = cte_get_evaluator(cli_participants[i].ai_type, NULL);
                 }
             }
         } else {
@@ -367,7 +357,7 @@ int main(int argc, char **argv){
                 "Bot_Greedy", "Bot_Cheater", "Bot_Random", "Bot_Dumb",
                 "Bot_Greedy2", "Bot_Cheater2", "Bot_Random2", "Bot_Dumb2"
             };
-            e_cli_ai_type default_types[4] = { AI_TYPE_GREEDY, AI_TYPE_CHEATER, AI_TYPE_RANDOM, AI_TYPE_DUMB };
+            e_cte_ai_type default_types[4] = { AI_TYPE_GREEDY, AI_TYPE_CHEATER, AI_TYPE_RANDOM, AI_TYPE_DUMB };
 
             for(uint8_t i = 0; i < nb_part; i++){
                 if(i == 0 && profile_specified && cli_config.game_type != GAME_AI_VS_AI){
@@ -384,7 +374,7 @@ int main(int argc, char **argv){
                     t_cfg.participants[i].ai_type = (cli_config.nb_ai_types > 0)
                         ? cli_config.ai_types[i % cli_config.nb_ai_types]
                         : default_types[i % 4];
-                    t_cfg.participants[i].evaluator = eval_from_ai_type(t_cfg.participants[i].ai_type);
+                    t_cfg.participants[i].evaluator = cte_get_evaluator(t_cfg.participants[i].ai_type, NULL);
                 }
             }
         }
