@@ -1,7 +1,10 @@
 #include "tournament.h"
+#include "eval.h"
+#include "profile.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg){
     if(!t || !cfg) return e_null;
@@ -16,12 +19,46 @@ t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg
         }
     }
 
+    for(uint8_t i = 0; i < cfg->nb_participants; i++){
+        if(cfg->participants[i].name[0] == '\0'){
+            return e_inval_val; // Empty name not allowed
+        }
+        for(uint8_t j = (uint8_t)(i + 1); j < cfg->nb_participants; j++){
+            if(strcasecmp(cfg->participants[i].name, cfg->participants[j].name) == 0){
+                return e_inval_val; // Duplicate name not allowed
+            }
+        }
+    }
+
     memset(t, 0, sizeof(s_cte_tournament));
     t->config = *cfg;
     t->champion_idx = -1;
 
     for(uint8_t i = 0; i < cfg->nb_participants; i++){
         t->standings[i] = i;
+        s_cte_tournament_participant *p = &t->config.participants[i];
+
+        if(p->elo_start == 0){
+            if(t->config.profile_db != NULL){
+                s_cte_profile *prof = find_profile(t->config.profile_db, p->name);
+                if(prof){
+                    p->elo_start = prof->elo;
+                } else if(p->is_human){
+                    p->elo_start = CTE_DEFAULT_ELO;
+                } else {
+                    p->elo_start = cte_default_ai_elo(p->ai_type);
+                }
+            } else {
+                if(p->is_human){
+                    p->elo_start = CTE_DEFAULT_ELO;
+                } else {
+                    p->elo_start = cte_default_ai_elo(p->ai_type);
+                }
+            }
+        }
+        if(p->elo_current == 0){
+            p->elo_current = p->elo_start;
+        }
     }
 
     return e_ok;
@@ -58,12 +95,15 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     }
     match.max_rounds = t->config.max_rounds > 0 ? t->config.max_rounds : 10;
 
+    bool has_human = p1->is_human || p2->is_human;
+    bool match_silent = t->config.silent && !has_human;
+
     s_cte_round_config r_cfg = {
         .first_player  = (stage + p1_idx + p2_idx) % 2,
         .is_team_mode  = false,
         .evaluators    = { NULL, NULL, NULL, NULL },
         .eval_contexts = { NULL, NULL, NULL, NULL },
-        .callbacks     = t->config.silent ? NULL : t->config.callbacks,
+        .callbacks     = match_silent ? NULL : t->config.callbacks,
         .ui_context    = t->config.ui_context,
     };
 
@@ -76,6 +116,7 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     // In Knockout mode, if match ends in a tie, play sudden-death rounds until broken
     if(force_decisive_winner && match.match_scores[0] == match.match_scores[1]){
         uint8_t tiebreaker_rounds = 0;
+        match.winning_score = UINT16_MAX; // Allow rounds to be played even if score >= original target
         while(match.match_scores[0] == match.match_scores[1] && tiebreaker_rounds < 3){
             match.max_rounds = match.round_nb + 1;
             err = run_match(&match, &r_cfg);
@@ -104,8 +145,8 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     p2->matches_played++;
     p1->total_points += s1;
     p2->total_points += s2;
-    p1->total_tablics += game.players.players[0].nb_tablic;
-    p2->total_tablics += game.players.players[1].nb_tablic;
+    p1->total_tablics += match.match_tablics[0];
+    p2->total_tablics += match.match_tablics[1];
 
     int8_t winner = -1;
     if(s1 > s2){
@@ -121,6 +162,16 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
         p2->matches_tied++;
         winner = -1;
     }
+
+    // In-tournament Elo rating update
+    double score1 = (winner == 0) ? 1.0 : (winner == -1) ? 0.5 : 0.0;
+    double score2 = 1.0 - score1;
+    int16_t d1 = compute_elo_delta(p1->elo_current, p2->elo_current, score1, CTE_DEFAULT_K_FACTOR);
+    int16_t d2 = compute_elo_delta(p2->elo_current, p1->elo_current, score2, CTE_DEFAULT_K_FACTOR);
+    p1->elo_current += d1;
+    p2->elo_current += d2;
+    if(p1->elo_current < 100) p1->elo_current = 100;
+    if(p2->elo_current < 100) p2->elo_current = 100;
 
     if(out_match){
         out_match->p1_idx        = p1_idx;
@@ -238,19 +289,48 @@ t_cteerr run_tournament(s_cte_tournament *t){
     return e_inval_val;
 }
 
+t_cteerr sync_tournament_profiles(const s_cte_tournament *t){
+    if(!t) return e_null;
+    s_cte_profile_db *db = t->config.profile_db;
+    if(!db) return e_ok;
+
+    for(uint8_t i = 0; i < t->config.nb_participants; i++){
+        const s_cte_tournament_participant *part = &t->config.participants[i];
+        if(!part->is_human && !t->config.persist_ai){
+            continue;
+        }
+        s_cte_profile *p = find_profile(db, part->name);
+        if(!p){
+            p = find_or_create_profile(db, part->name);
+        }
+        if(p){
+            p->elo = part->elo_current;
+            p->matches_played += part->matches_played;
+            p->matches_won += part->matches_won;
+            p->matches_lost += part->matches_lost;
+            p->matches_tied += part->matches_tied;
+            p->total_points += part->total_points;
+            p->total_tablics += part->total_tablics;
+            p->last_played_at = (uint64_t)time(NULL);
+        }
+    }
+
+    return save_profiles(db);
+}
+
 void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style style){
     if(!t) return;
     (void)style;
 
-    printf("\n=========================================================================================\n");
+    printf("\n===================================================================================================\n");
     if(t->config.type == TOURNAMENT_ROUND_ROBIN){
-        printf("                        CTE TOURNAMENT — ROUND ROBIN STANDINGS                           \n");
+        printf("                             CTE TOURNAMENT — ROUND ROBIN STANDINGS                                \n");
     } else {
-        printf("                        CTE TOURNAMENT — KNOCKOUT CUP STANDINGS                          \n");
+        printf("                             CTE TOURNAMENT — KNOCKOUT CUP STANDINGS                               \n");
     }
-    printf("=========================================================================================\n");
-    printf(" Rank | %-20s | Played | Won  | Lost | Tied | Total Pts | Tablics | Win Rate \n", "Participant");
-    printf("------|----------------------|--------|------|------|------|-----------|---------|----------\n");
+    printf("===================================================================================================\n");
+    printf(" Rank | %-20s | Elo Bef | Elo Aft | Delta | Won  | Lost | Tied | Pts   | Tablics | Win%%  \n", "Participant");
+    printf("------|----------------------|---------|---------|-------|------|------|------|-------|---------|-------\n");
 
     for(uint8_t r = 0; r < t->config.nb_participants; r++){
         uint8_t idx = t->standings[r];
@@ -267,10 +347,12 @@ void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style st
             snprintf(rank_str, sizeof(rank_str), "  %u   ", (unsigned)(r + 1));
         }
 
-        printf("%s| %-20s |   %2u   |  %2u  |  %2u  |  %2u  |   %5u   |   %3u   |  %5.1f%%\n",
+        printf("%s| %-20s |  %5d  |  %5d  | %+5d |  %2u  |  %2u  |  %2u  | %5u |   %3u   | %5.1f%%\n",
                rank_str,
                p->name,
-               (unsigned)p->matches_played,
+               (int)p->elo_start,
+               (int)p->elo_current,
+               (int)(p->elo_current - p->elo_start),
                (unsigned)p->matches_won,
                (unsigned)p->matches_lost,
                (unsigned)p->matches_tied,
@@ -278,11 +360,11 @@ void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style st
                (unsigned)p->total_tablics,
                win_rate);
     }
-    printf("=========================================================================================\n");
+    printf("===================================================================================================\n");
 
     if(t->champion_idx >= 0 && t->champion_idx < t->config.nb_participants){
         printf(" >>> TOURNAMENT CHAMPION: %s <<<\n", t->config.participants[t->champion_idx].name);
-        printf("=========================================================================================\n\n");
+        printf("===================================================================================================\n\n");
     }
 }
 

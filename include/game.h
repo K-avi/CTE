@@ -31,6 +31,7 @@ typedef struct {
 struct s_cte_match {
     s_cte_game *game;                 // Reference to reentrant game state
     uint16_t    match_scores[4];      // Cumulative score per player (or per team)
+    uint16_t    match_tablics[4];     // Cumulative tablic count per player (or per team)
     uint16_t    winning_score;        // Configurable (e.g. 51, 101, 201)
     uint8_t     round_nb;             // Current round index (0-indexed)
     uint8_t     max_rounds;           // Optional round limit (0 = unlimited)

@@ -189,15 +189,16 @@ s_cte_profile* find_or_create_profile(s_cte_profile_db *db, const char *name){
     return p;
 }
 
+int16_t compute_elo_delta(int16_t elo_self, int16_t elo_opponent,
+                          double score, uint8_t k_factor){
+    if(k_factor == 0) k_factor = CTE_DEFAULT_K_FACTOR;
+    double expected = 1.0 / (1.0 + pow(10.0, (double)(elo_opponent - elo_self) / 400.0));
+    return (int16_t)round((double)k_factor * (score - expected));
+}
+
 void update_match_elo(s_cte_profile *p1, s_cte_profile *p2, int8_t winner_idx, uint8_t k_factor){
     if(!p1 || !p2) return;
     if(k_factor == 0) k_factor = CTE_DEFAULT_K_FACTOR;
-
-    double r1 = (double)p1->elo;
-    double r2 = (double)p2->elo;
-
-    double exp1 = 1.0 / (1.0 + pow(10.0, (r2 - r1) / 400.0));
-    double exp2 = 1.0 - exp1;
 
     double s1, s2;
     if(winner_idx == 0){
@@ -211,8 +212,8 @@ void update_match_elo(s_cte_profile *p1, s_cte_profile *p2, int8_t winner_idx, u
         s2 = 0.5;
     }
 
-    int16_t d1 = (int16_t)round((double)k_factor * (s1 - exp1));
-    int16_t d2 = (int16_t)round((double)k_factor * (s2 - exp2));
+    int16_t d1 = compute_elo_delta(p1->elo, p2->elo, s1, k_factor);
+    int16_t d2 = compute_elo_delta(p2->elo, p1->elo, s2, k_factor);
 
     p1->elo += d1;
     if(p1->elo < 100) p1->elo = 100;

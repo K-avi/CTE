@@ -269,7 +269,10 @@ t_cteerr init_match(struct s_cte_match *match, s_cte_game *game, uint16_t winnin
     match->round_nb      = 0;
     match->max_rounds    = 0;
     match->is_team_mode  = game->is_team_mode;
-    for(uint8_t i = 0; i < 4; i++) match->match_scores[i] = 0;
+    for(uint8_t i = 0; i < 4; i++){
+        match->match_scores[i] = 0;
+        match->match_tablics[i] = 0;
+    }
 
     return e_ok;
 }
@@ -322,7 +325,9 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
             config->callbacks->on_round_start(match->round_nb + 1, config->ui_context);
         }
 
-        t_cteerr err = run_round(match->game, config);
+        s_cte_round_config round_cfg = *config;
+        round_cfg.first_player = (uint8_t)((config->first_player + match->round_nb) % match->game->players.size);
+        t_cteerr err = run_round(match->game, &round_cfg);
         if(err != e_ok) return err;
 
         s_cte_round_score scores[4] = {0};
@@ -337,10 +342,17 @@ t_cteerr run_match(struct s_cte_match *match, const s_cte_round_config *config){
             match->match_scores[1] += team1_pts;
             match->match_scores[2] = match->match_scores[0];
             match->match_scores[3] = match->match_scores[1];
+            uint16_t team0_tablics = (uint16_t)(scores[0].tablic_points + scores[2].tablic_points);
+            uint16_t team1_tablics = (uint16_t)(scores[1].tablic_points + scores[3].tablic_points);
+            match->match_tablics[0] += team0_tablics;
+            match->match_tablics[1] += team1_tablics;
+            match->match_tablics[2] = match->match_tablics[0];
+            match->match_tablics[3] = match->match_tablics[1];
             total_round_pts = team0_pts + team1_pts;
         } else {
             for(uint8_t i = 0; i < match->game->players.size; i++){
                 match->match_scores[i] += scores[i].total;
+                match->match_tablics[i] += scores[i].tablic_points;
                 total_round_pts += scores[i].total;
             }
         }

@@ -64,4 +64,14 @@ uint16_t eval_cheater(const s_cte_game_state *state,
                       const struct s_cte_move_list *moves,
                       void *ctx);
 
+static inline int16_t cte_default_ai_elo(e_cli_ai_type type){
+    switch(type){
+        case AI_TYPE_RANDOM:  return 800;
+        case AI_TYPE_DUMB:    return 900;
+        case AI_TYPE_GREEDY:  return 1100;
+        case AI_TYPE_CHEATER: return 1400;
+        default:              return 1000;
+    }
+}
+
 #endif

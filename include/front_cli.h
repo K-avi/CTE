@@ -13,12 +13,21 @@ typedef struct {
     e_cte_render_style style;
     uint16_t           winning_score;
     uint8_t            max_rounds;
+    char               profile_name[32];
 } s_cte_cli_config;
+
+typedef struct {
+    e_cte_render_style style;
+    bool               is_team_mode;
+} s_cli_ui_ctx;
 
 // Interactive input evaluator for human players
 uint16_t cli_read_human_move(const s_cte_game_state *state,
                              const struct s_cte_move_list *moves,
                              void *ctx);
+
+// Get default CLI callbacks for UI events (board, turn, cards display)
+const s_cte_ui_callbacks *cli_get_callbacks(void);
 
 // Main CLI game launcher
 int run_cli_frontend(const s_cte_cli_config *config);

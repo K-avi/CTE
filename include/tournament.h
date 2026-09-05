@@ -2,6 +2,7 @@
 #define __CTE_TOURNAMENT_H
 
 #include "game.h"
+#include "profile.h"
 
 #define CTE_MAX_TOURNAMENT_PLAYERS 16
 #define CTE_MAX_TOURNAMENT_MATCHES 128
@@ -13,17 +14,19 @@ typedef enum {
 
 // Participant record in tournament
 typedef struct {
-    char        name[32];
-    t_evaluator evaluator;
-    void       *eval_context;
-    bool        is_human;
-    uint16_t    matches_played;
-    uint16_t    matches_won;
-    uint16_t    matches_lost;
-    uint16_t    matches_tied;
-    uint32_t    total_points;
-    uint16_t    total_tablics;
-    int16_t     elo;
+    char          name[32];
+    t_evaluator   evaluator;
+    void         *eval_context;
+    bool          is_human;
+    e_cli_ai_type ai_type;
+    uint16_t      matches_played;
+    uint16_t      matches_won;
+    uint16_t      matches_lost;
+    uint16_t      matches_tied;
+    uint32_t      total_points;
+    uint16_t      total_tablics;
+    int16_t       elo_start;
+    int16_t       elo_current;
 } s_cte_tournament_participant;
 
 // Single match result inside tournament
@@ -47,6 +50,8 @@ typedef struct {
     bool                         silent;        // If true, suppress move-by-move prints
     const s_cte_ui_callbacks    *callbacks;
     void                        *ui_context;
+    s_cte_profile_db            *profile_db;    // Optional: NULL if no profile tracking
+    bool                         persist_ai;    // If true, persist AI profiles to DB
 } s_cte_tournament_config;
 
 // Tournament state structure
@@ -61,6 +66,7 @@ typedef struct {
 // Tournament API
 t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg);
 t_cteerr run_tournament(s_cte_tournament *t);
+t_cteerr sync_tournament_profiles(const s_cte_tournament *t);
 void     print_tournament_standings(const s_cte_tournament *t, e_cte_render_style style);
 void     free_tournament(s_cte_tournament *t);
 

@@ -2,11 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-typedef struct {
-    e_cte_render_style style;
-    bool               is_team_mode;
-} s_cli_ui_ctx;
 
 static void cli_on_round_start(uint8_t round_nb, void *ui_ctx){
     (void)ui_ctx;
@@ -150,18 +147,30 @@ uint16_t cli_read_human_move(const s_cte_game_state *state,
     if(!moves || moves->size == 0) return 0;
 
     for(;;){
-        printf(" Enter move number (0 to %u): ", (unsigned)(moves->size - 1));
+        printf(" Enter move number (0 to %u, or 'q' to quit): ", (unsigned)(moves->size - 1));
         char line[64];
         if(!fgets(line, sizeof(line), stdin)){
-            return 0; // EOF fallback
+            printf("\n[CTE] Input closed (EOF). Exiting...\n");
+            exit(0);
+        }
+
+        size_t len = strlen(line);
+        while(len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' || line[len - 1] == ' ')){
+            line[--len] = '\0';
+        }
+
+        if(strcmp(line, "q") == 0 || strcmp(line, "Q") == 0 ||
+           strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0){
+            printf("\n[CTE] Game aborted by user.\n");
+            exit(0);
         }
 
         char *endptr = NULL;
         long val = strtol(line, &endptr, 10);
-        if(endptr != line && val >= 0 && val < (long)moves->size){
+        if(endptr != line && *endptr == '\0' && val >= 0 && val < (long)moves->size){
             return (uint16_t)val;
         }
-        printf(" [!] Invalid move number. Please choose between 0 and %u.\n", (unsigned)(moves->size - 1));
+        printf(" [!] Invalid move number. Please choose between 0 and %u (or 'q' to quit).\n", (unsigned)(moves->size - 1));
     }
 }
 
@@ -173,6 +182,10 @@ static const s_cte_ui_callbacks g_cli_callbacks = {
     .on_round_end   = cli_on_round_end,
     .on_match_end   = cli_on_match_end,
 };
+
+const s_cte_ui_callbacks *cli_get_callbacks(void){
+    return &g_cli_callbacks;
+}
 
 static t_evaluator get_evaluator(e_cli_ai_type type, const char **name_out){
     switch(type){
@@ -213,12 +226,20 @@ int run_cli_frontend(const s_cte_cli_config *config){
         if(config->game_type == GAME_HUMAN_VS_HUMAN){
             slot_is_human[i] = true;
             slot_evaluators[i] = cli_read_human_move;
-            snprintf(base_name, sizeof(base_name), "Player %u (Human)", (unsigned)(i + 1));
+            if(i == 0 && config->profile_name[0] != '\0'){
+                snprintf(base_name, sizeof(base_name), "%.31s", config->profile_name);
+            } else {
+                snprintf(base_name, sizeof(base_name), "Player %u (Human)", (unsigned)(i + 1));
+            }
         } else if(config->game_type == GAME_HUMAN_VS_AI){
             if(i == 0){
                 slot_is_human[i] = true;
                 slot_evaluators[i] = cli_read_human_move;
-                snprintf(base_name, sizeof(base_name), "Human (P1)");
+                if(config->profile_name[0] != '\0'){
+                    snprintf(base_name, sizeof(base_name), "%.31s", config->profile_name);
+                } else {
+                    snprintf(base_name, sizeof(base_name), "Human (P1)");
+                }
             } else {
                 slot_is_human[i] = false;
                 uint8_t ai_idx = (config->nb_ai_types > 1) ? (uint8_t)(i - 1) : 0;
@@ -296,6 +317,54 @@ int run_cli_frontend(const s_cte_cli_config *config){
         fprintf(stderr, "Error during match execution (code: %u)\n", err);
         free_game(&game);
         return 1;
+    }
+
+    if(err == e_ok && config->profile_name[0] != '\0' && config->game_type != GAME_AI_VS_AI){
+        s_cte_profile_db db;
+        if(init_profile_db(&db, NULL) == e_ok){
+            s_cte_profile *p = find_or_create_profile(&db, config->profile_name);
+            if(p){
+                p->total_points += match.match_scores[0];
+                p->total_tablics += match.match_tablics[0];
+                p->matches_played++;
+
+                int16_t opp_elo = CTE_DEFAULT_ELO;
+                if(config->nb_players >= 2){
+                    if(!game.players.players[1].is_human && config->nb_ai_types > 0){
+                        opp_elo = cte_default_ai_elo(config->ai_types[0]);
+                    } else {
+                        s_cte_profile *opp_p = find_profile(&db, names[1]);
+                        if(opp_p) opp_elo = opp_p->elo;
+                    }
+                }
+
+                uint16_t s0 = match.match_scores[0];
+                uint16_t s1 = (config->nb_players >= 2) ? match.match_scores[1] : 0;
+                double score = 0.5;
+                if(s0 > s1){
+                    p->matches_won++;
+                    score = 1.0;
+                } else if(s1 > s0){
+                    p->matches_lost++;
+                    score = 0.0;
+                } else {
+                    p->matches_tied++;
+                    score = 0.5;
+                }
+
+                int16_t delta = compute_elo_delta(p->elo, opp_elo, score, CTE_DEFAULT_K_FACTOR);
+                int16_t old_elo = p->elo;
+                p->elo += delta;
+                if(p->elo < 100) p->elo = 100;
+                p->last_played_at = (uint64_t)time(NULL);
+
+                save_profiles(&db);
+                printf("\n[Profile] '%s' updated: Elo %d -> %d (%+d), Matches: %u (W:%u L:%u D:%u)\n",
+                       p->name, (int)old_elo, (int)p->elo, (int)delta,
+                       (unsigned)p->matches_played, (unsigned)p->matches_won,
+                       (unsigned)p->matches_lost, (unsigned)p->matches_tied);
+            }
+        }
     }
 
     free_game(&game);

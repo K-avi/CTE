@@ -41,6 +41,8 @@ s_cte_profile* find_profile(s_cte_profile_db *db, const char *name);
 s_cte_profile* find_or_create_profile(s_cte_profile_db *db, const char *name);
 
 // Elo rating calculation & match update
+int16_t compute_elo_delta(int16_t elo_self, int16_t elo_opponent,
+                          double score, uint8_t k_factor);
 void update_match_elo(s_cte_profile *p1, s_cte_profile *p2, int8_t winner_idx, uint8_t k_factor);
 
 // Ranking & visualization

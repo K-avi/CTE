@@ -13,6 +13,7 @@ typedef struct {
     e_cte_render_style style;
     uint16_t           winning_score;
     uint8_t            max_rounds;
+    char               profile_name[32];
 } s_cte_tui_config;
 
 // Main TUI game runner
