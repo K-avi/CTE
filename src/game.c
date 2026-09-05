@@ -167,6 +167,7 @@ t_cteerr run_round(s_cte_game *game, const s_cte_round_config *config){
         s_cte_game_state state = {
             .table_bb          = game->table_bb,
             .players           = &game->players,
+            .deck              = &game->deck,
             .current_player_id = current,
             .is_team_mode      = game->is_team_mode,
         };

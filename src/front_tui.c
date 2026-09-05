@@ -340,35 +340,51 @@ static void tui_on_match_end(const struct s_cte_match *match, int8_t winner_id,
   mvprintw(2, 4, " ================= MATCH FINISHED ================= ");
   attroff(COLOR_PAIR(PAIR_HEADER) | A_BOLD);
 
+  int cur_y = 5;
   if (match->is_team_mode && match->game && match->game->players.size == 4) {
     if (winner_id == 0) {
-      mvprintw(5, 6, "WINNER: Team 1 (%s & %s) with %u points! (Rounds: %u)",
+      mvprintw(cur_y++, 6, "WINNER: Team 1 (%s & %s) with %u points! (Rounds: %u)",
                match->game->players.players[0].player_name,
                match->game->players.players[2].player_name,
                (unsigned)match->match_scores[0], (unsigned)match->round_nb);
     } else if (winner_id == 1) {
-      mvprintw(5, 6, "WINNER: Team 2 (%s & %s) with %u points! (Rounds: %u)",
+      mvprintw(cur_y++, 6, "WINNER: Team 2 (%s & %s) with %u points! (Rounds: %u)",
                match->game->players.players[1].player_name,
                match->game->players.players[3].player_name,
                (unsigned)match->match_scores[1], (unsigned)match->round_nb);
     } else {
-      mvprintw(5, 6, "Match finished in a DRAW! (Rounds: %u)",
+      mvprintw(cur_y++, 6, "Match finished in a DRAW! (Rounds: %u)",
                (unsigned)match->round_nb);
     }
+    cur_y++;
+    mvprintw(cur_y++, 6, "--- Final Team Scores ---");
+    mvprintw(cur_y++, 8, "* Team 1 (P1+P3) : %3u points (%u tablics)",
+             (unsigned)match->match_scores[0], (unsigned)match->match_tablics[0]);
+    mvprintw(cur_y++, 8, "* Team 2 (P2+P4) : %3u points (%u tablics)",
+             (unsigned)match->match_scores[1], (unsigned)match->match_tablics[1]);
   } else if (match->game) {
     if (winner_id >= 0 && winner_id < (int8_t)match->game->players.size) {
-      mvprintw(5, 6, "WINNER: %s with %u points! (Rounds: %u)",
+      mvprintw(cur_y++, 6, "WINNER: %s with %u points! (Rounds: %u)",
                match->game->players.players[winner_id].player_name,
                (unsigned)match->match_scores[winner_id],
                (unsigned)match->round_nb);
     } else {
-      mvprintw(5, 6, "Match finished in a DRAW! (Rounds: %u)",
+      mvprintw(cur_y++, 6, "Match finished in a DRAW! (Rounds: %u)",
                (unsigned)match->round_nb);
+    }
+    cur_y++;
+    mvprintw(cur_y++, 6, "--- Final Player Scores ---");
+    for (uint8_t i = 0; i < match->game->players.size; i++) {
+      mvprintw(cur_y++, 8, "* %-20s : %3u points (%u tablics)",
+               match->game->players.players[i].player_name,
+               (unsigned)match->match_scores[i],
+               (unsigned)match->match_tablics[i]);
     }
   }
 
+  cur_y += 2;
   attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-  mvprintw(9, 6, " [Press any key to continue...] ");
+  mvprintw(cur_y, 6, " [Press any key to continue...] ");
   attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
 
   refresh();
@@ -381,6 +397,15 @@ static const s_cte_ui_callbacks g_tui_callbacks = {
     .on_turn_start = NULL,
     .on_move_played = tui_on_move_played,
     .on_round_end = tui_on_round_end,
+    .on_match_end = tui_on_match_end,
+};
+
+static const s_cte_ui_callbacks g_tui_ai_match_callbacks = {
+    .on_round_start = NULL,
+    .on_deal = NULL,
+    .on_turn_start = NULL,
+    .on_move_played = NULL,
+    .on_round_end = NULL,
     .on_match_end = tui_on_match_end,
 };
 
@@ -492,7 +517,7 @@ int run_tui_frontend(const s_cte_tui_config *config) {
       .is_team_mode = config->is_team_mode,
       .evaluators = {NULL, NULL, NULL, NULL},
       .eval_contexts = {NULL, NULL, NULL, NULL},
-      .callbacks = &g_tui_callbacks,
+      .callbacks = (config->game_type == GAME_AI_VS_AI) ? &g_tui_ai_match_callbacks : &g_tui_callbacks,
       .ui_context = &ui_ctx,
   };
 
@@ -882,7 +907,7 @@ static void tui_menu_tournament(void) {
     getmaxyx(stdscr, max_y, max_x);
     (void)max_y;
 
-    int box_w = 66;
+    int box_w = 74;
     int box_h = 18;
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
     int start_y = 3;
@@ -910,10 +935,10 @@ static void tui_menu_tournament(void) {
       int row_y = start_y + 3 + (i >= 4 ? i + 1 : i);
       if (i == selected) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-        mvprintw(row_y, start_x + 3, " ->  %-58s ", items[i]);
+        mvprintw(row_y, start_x + 3, " ->  %-62s ", items[i]);
         attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
       } else {
-        mvprintw(row_y, start_x + 3, "     %-58s ", items[i]);
+        mvprintw(row_y, start_x + 3, "     %-62s ", items[i]);
       }
     }
 
@@ -1018,8 +1043,9 @@ static void tui_menu_tournament(void) {
           int res_h = 10 + nb_slots;
           if (res_h > max_avail_h) res_h = max_avail_h;
 
-          int res_w = (max_x >= 80) ? 78 : (max_x > 4 ? max_x - 2 : 78);
+          int res_w = (max_x >= 90) ? 86 : (max_x >= 84 ? 84 : (max_x > 4 ? max_x - 2 : 80));
           int res_x = (max_x > res_w) ? (max_x - res_w) / 2 : 1;
+          int pad_x = (res_w >= 86) ? 4 : 2;
           tui_draw_box(1, res_x, res_h, res_w,
                        (type == TOURNAMENT_ROUND_ROBIN)
                            ? "ROUND ROBIN RESULTS"
@@ -1034,17 +1060,16 @@ static void tui_menu_tournament(void) {
           }
 
           attron(A_BOLD);
-          mvprintw(5, res_x + 3,
-                   "Rank | %-16s | Elo Bef | Elo Aft | Delta | Won | Lost | Pts   | Win%%",
-                   "Participant");
+          mvprintw(5, res_x + pad_x,
+                   " Rank | Participant      | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
           attroff(A_BOLD);
           mvprintw(
-              6, res_x + 3,
-              "-----|------------------|---------|---------|-------|-----|------|-------|------");
+              6, res_x + pad_x,
+              "------|------------------|---------|---------|-------|-----|------|------|-----");
 
           for (uint8_t r = 0; r < t.config.nb_participants; r++) {
             if (7 + r >= res_h - 1) {
-              mvprintw(7 + r, res_x + 3, "... (%u more participants omitted) ...",
+              mvprintw(7 + r, res_x + pad_x, "... (%u more participants omitted) ...",
                        (unsigned)(t.config.nb_participants - r));
               break;
             }
@@ -1055,8 +1080,8 @@ static void tui_menu_tournament(void) {
                     ? ((double)p->matches_won / p->matches_played) * 100.0
                     : 0.0;
             int16_t delta = p->elo_current - p->elo_start;
-            mvprintw(7 + r, res_x + 3,
-                     " %2u  | %-16s |  %5d  |  %5d  | %+5d | %3u |  %3u | %5u | %4.0f%%",
+            mvprintw(7 + r, res_x + pad_x,
+                     "  %2u  | %-16.16s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
                      (unsigned)(r + 1), p->name, (int)p->elo_start,
                      (int)p->elo_current, (int)delta, (unsigned)p->matches_won,
                      (unsigned)p->matches_lost, (unsigned)p->total_points, wr);
