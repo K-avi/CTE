@@ -72,10 +72,10 @@ t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out);
 
 static inline int16_t cte_default_ai_elo(e_cte_ai_type type){
     switch(type){
-        case AI_TYPE_RANDOM:  return 800;
-        case AI_TYPE_DUMB:    return 900;
-        case AI_TYPE_GREEDY:  return 1100;
-        case AI_TYPE_CHEATER: return 1400;
+        case AI_TYPE_DUMB:    return 0;
+        case AI_TYPE_RANDOM:  return 300;
+        case AI_TYPE_GREEDY:  return 1000;
+        case AI_TYPE_CHEATER: return 1150;
         default:              return 1000;
     }
 }

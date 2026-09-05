@@ -14,6 +14,7 @@ struct s_cte_players;
 #define CTE_PROFILE_NAME_MAX 32
 #define CTE_PROFILE_MAGIC "CTEPRF01"
 #define CTE_DEFAULT_ELO 1200
+#define CTE_MIN_ELO 0
 #define CTE_DEFAULT_K_FACTOR 32
 
 typedef struct {

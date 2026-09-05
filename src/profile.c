@@ -217,10 +217,10 @@ void update_match_elo(s_cte_profile *p1, s_cte_profile *p2, int8_t winner_idx, u
     int16_t d2 = compute_elo_delta(p2->elo, p1->elo, s2, k_factor);
 
     p1->elo += d1;
-    if(p1->elo < 100) p1->elo = 100;
+    if(p1->elo < CTE_MIN_ELO) p1->elo = CTE_MIN_ELO;
 
     p2->elo += d2;
-    if(p2->elo < 100) p2->elo = 100;
+    if(p2->elo < CTE_MIN_ELO) p2->elo = CTE_MIN_ELO;
 
     p1->matches_played++;
     p2->matches_played++;
@@ -340,7 +340,7 @@ t_cteerr record_match_result_in_profile_path(const char *profile_name,
 
     int16_t delta = compute_elo_delta(p->elo, opp_elo, score, CTE_DEFAULT_K_FACTOR);
     p->elo += delta;
-    if(p->elo < 100) p->elo = 100;
+    if(p->elo < CTE_MIN_ELO) p->elo = CTE_MIN_ELO;
     p->last_played_at = (uint64_t)time(NULL);
 
     if(out_delta) *out_delta = delta;

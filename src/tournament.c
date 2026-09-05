@@ -170,8 +170,8 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     int16_t d2 = compute_elo_delta(p2->elo_current, p1->elo_current, score2, CTE_DEFAULT_K_FACTOR);
     p1->elo_current += d1;
     p2->elo_current += d2;
-    if(p1->elo_current < 100) p1->elo_current = 100;
-    if(p2->elo_current < 100) p2->elo_current = 100;
+    if(p1->elo_current < CTE_MIN_ELO) p1->elo_current = CTE_MIN_ELO;
+    if(p2->elo_current < CTE_MIN_ELO) p2->elo_current = CTE_MIN_ELO;
 
     if(out_match){
         out_match->p1_idx        = p1_idx;

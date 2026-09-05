@@ -805,10 +805,10 @@ int main(){
         err = init_tournament(&t_rr, &cfg_rr);
         assert(err == e_ok);
         assert(t_rr.config.nb_participants == 4);
-        assert(t_rr.config.participants[0].elo_start == 1100);
-        assert(t_rr.config.participants[1].elo_start == 1400);
-        assert(t_rr.config.participants[2].elo_start == 800);
-        assert(t_rr.config.participants[3].elo_start == 900);
+        assert(t_rr.config.participants[0].elo_start == 1000);
+        assert(t_rr.config.participants[1].elo_start == 1150);
+        assert(t_rr.config.participants[2].elo_start == 300);
+        assert(t_rr.config.participants[3].elo_start == 0);
 
         err = run_tournament(&t_rr);
         assert(err == e_ok);
@@ -978,7 +978,7 @@ int main(){
         err = init_tournament(&t_prof, &cfg_prof);
         assert(err == e_ok);
         assert(t_prof.config.participants[0].elo_start == CTE_DEFAULT_ELO);
-        assert(t_prof.config.participants[1].elo_start == 900);
+        assert(t_prof.config.participants[1].elo_start == 0);
 
         err = run_tournament(&t_prof);
         assert(err == e_ok);
@@ -1264,7 +1264,7 @@ int main(){
         assert(record_match_result_in_profile_path("Alice", NULL, &mock_players, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
         assert(record_match_result_in_profile_path("Alice", &mock_match, NULL, ai_types, 1, NULL, NULL, t34_db_path) == e_null);
 
-        // Match win against AI Greedy (opp_elo = 1400, Alice starting elo = 1200)
+        // Match win against AI Greedy (opp_elo = 1000, Alice starting elo = 1200)
         s_cte_profile out_p;
         int16_t delta = 0;
         assert(record_match_result_in_profile_path("Alice", &mock_match, &mock_players, ai_types, 1, &out_p, &delta, t34_db_path) == e_ok);
