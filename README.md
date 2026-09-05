@@ -81,7 +81,7 @@ Tablić is a fishing card game popular in the Balkans, played with a standard 52
 # Build release binaries, test suites, and benchmarks:
 make all
 
-# Run complete functional test suite (T1–T26):
+# Run complete functional test suite (T1–T34):
 make run-test
 
 # Run 2-way differential fuzzing suite (BT1–BT4):
@@ -92,22 +92,31 @@ make tests
 
 # Run performance benchmark suite:
 make run-bench
+
+# Install binary and manpage to system (or custom PREFIX):
+sudo make install
 ```
 
 ### Usage Examples
 
 ```bash
-# Launch interactive ncurses TUI against the Minimax Cheater bot:
-./build/cte -m tui -g h-vs-ai -a cheater
+# Launch interactive ncurses TUI with main menu:
+./build/cte
 
-# 3-player game in TUI with mixed AI strategies:
-./build/cte -m tui -n 3 -g h-vs-ai -a greedy,cheater
+# Play a quick match against the Minimax Cheater bot in TUI:
+./build/cte -m tui -g h-vs-ai -a cheater -p "MyProfile"
 
 # 4-player 2v2 Team match in TUI:
 ./build/cte -m tui -n 4 -t -g h-vs-ai -a greedy,cheater,greedy
 
-# Fast CLI headless AI duel (10 deck cycles):
-./build/cte -m cli -g ai-vs-ai -a greedy,cheater -c 10 -s ascii
+# Simulate an 8-participant Round Robin tournament in CLI:
+./build/cte -T round-robin -P Alice:human -P Bob:greedy -P Bot1:cheater -P Bot2:random
+
+# Knockout Cup single-elimination tournament to 51 points:
+./build/cte -T cup -P Champion:greedy -P Challenger:cheater -w 51
+
+# Consult player Elo leaderboard:
+./build/cte -L
 ```
 
 ### Command-Line Options
@@ -123,6 +132,11 @@ Options:
   -w, --winning-score <pts>  Target score to win the match (default: 101)
   -c, --rounds <number>      Max number of rounds/deck cycles (default: 0 = unlimited)
   -r, --seed <number>        RNG seed (default: system time)
+  -T, --tournament <type>    Run tournament directly: round-robin or cup
+  -P, --participant <spec>   Add participant: 'name:type' (human/random/dumb/greedy/cheater)
+      --persist-ai           Persist AI bots in profile database (default: transient)
+  -p, --profile <name>       Active player profile for tracking statistics and Elo
+  -L, --leaderboard          Display player Elo leaderboard and exit
   -h, --help                 Display help message and exit
 ```
 
@@ -137,18 +151,20 @@ cte/
 │   ├── player.h                # Player state & won cards tracking
 │   ├── move.h                  # Move validation (is_legal), state transition (play_move) & scoring
 │   ├── game.h                  # Game orchestration (init_game, run_round, pos_from_game, cte_set_backend)
-│   ├── eval.h                  # Generic evaluator interface & heuristic evaluators
+│   ├── eval.h                  # Evaluators, default Elo ratings & cte_get_evaluator
 │   ├── minmax.h                # Compact 60-byte L1 cache snapshot & Alpha-Beta search
 │   ├── engine.h                # Abstract s_cte_engine_backend interface & backend registry
 │   ├── backend_bitboard.h      # SWAR Rank Patterns bitboard move generator prototypes
 │   ├── bitboard_rank_tables.h  # Compact 7.1 KB rank LUT constants & types
+│   ├── tournament.h            # Round Robin & Knockout cup tournament engine
+│   ├── profile.h               # XDG atomic binary profile database & Elo rating math
 │   ├── front_cli.h             # Terminal CLI frontend & observer callbacks
-│   ├── front_tui.h             # ncurses interactive TUI frontend
+│   ├── front_tui.h             # ncurses interactive TUI frontend & menu system
 │   └── cte.h                   # Master umbrella header
 ├── src/                        # Implementation source modules
-├── test/                       # Functional (T1–T26) & differential bitboard (BT1–BT4) tests
+├── test/                       # Functional (T1–T34) & differential bitboard (BT1–BT4) tests
 ├── tools/                      # Benchmarks & Python table generator
-├── docs/                       # Architectural documentation (backends.md)
+├── docs/                       # Architectural docs (backends.md) & Unix manpage (cte.1)
 └── main.c                      # CLI entry point & POSIX option parser
 ```
 

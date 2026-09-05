@@ -126,6 +126,13 @@ Run a tournament directly:
 .BR round-robin " (all participants play each other),"
 .BR cup " or " knockout " (single-elimination tournament bracket)."
 .TP
+.BR \-P ", " \-\-participant " \fIspec\fR"
+Add a custom tournament participant in \fIname:type\fR format (e.g. \fBAlice:human\fR, \fBBot1:greedy\fR, \fBBot2:cheater\fR).
+Can be specified multiple times up to 16 participants. Supported types: \fBhuman\fR, \fBrandom\fR, \fBdumb\fR, \fBgreedy\fR, \fBcheater\fR.
+.TP
+.BR \-\-persist-ai
+Enable persistent storage of AI bot statistics in the profile database (by default, AI profiles are transient).
+.TP
 .BR \-p ", " \-\-profile " \fIname\fR"
 Active player profile name for persistent statistics and Elo rating updates.
 .TP
