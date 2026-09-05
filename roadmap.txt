@@ -47,7 +47,7 @@ Steps & Roadmap :
         - [ ] Fair AI: Perfect Information Monte Carlo (PIMC determinization)
         - [ ] Monte Carlo Tree Search (MCTS)
    [ ] Pipedream :
-        - [ ] CTE NN
+        - [ ] CTE NN: Neural Network evaluation & policy/value network (AlphaZero-like Tablić agent)
 
 4. HPC & Architecture Optimizations (Bitboards & SIMD) :
    [x] Backend-agnostic engine abstraction layer:
@@ -87,3 +87,17 @@ Steps & Roadmap :
 6. Other : 
    [x] Make a manpage for CTE (docs/cte.1, integrated in Makefile install/uninstall).
    [x] Setup & use a CI with Actions.
+
+7. Analysis Tools & Pipedreams (Applications built on top of CTE) :
+   [ ] Lichess-style Interactive Analysis Board & Game Tree Explorer:
+        - Decoupled client (WebAssembly / Web frontend or local GUI app) using CTE as the engine oracle
+        - Real-time dynamic evaluation bar & win-probability gauge
+        - Turn-by-turn game tree navigation with alternative branching / variations
+        - Post-match blunder and inaccuracy detection (missed multi-captures, game-losing drops)
+        - Candidate moves ranking with Principal Variation (PV) lookahead visualization
+   [ ] Universal Engine Interface / Protocol (CTE-UCI / CTE-GTP):
+        - Text or JSON-based standard communication protocol allowing external GUIs and platforms to drive CTE
+   [ ] Long-Term Ecosystem & Multi-Repo Governance (Tablić OSS Collection):
+        - Dedicated GitHub organization hosting satellite tools, frontends, bindings, and tournament infrastructure
+        - Separate repositories for web frontends (WASM analysis board), GUI clients, language bindings (Python/Rust), and community bots
+        - Keep 'cte' repository focused strictly on the core high-performance C engine, reference CLI, and TUI
