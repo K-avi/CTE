@@ -133,7 +133,12 @@ Can be specified multiple times up to 16 participants. Supported types: \fBhuman
 .BR \-\-persist-ai
 Enable persistent storage of AI bot statistics in the profile database (by default, AI profiles are transient).
 .TP
+.BR \-\-bench-ai " \fIbot1:bot2\fR"
+Run a headless statistical benchmark between two AI strategies across multiple rounds (set with \fB\-c\fR, default: 200).
+Alternates starting seats fairly, reporting win rates, average points, move latency, and relative Elo performance delta.
+.TP
 .BR \-p ", " \-\-profile " \fIname\fR"
+
 Active player profile name for persistent statistics and Elo rating updates.
 .TP
 .BR \-L ", " \-\-leaderboard

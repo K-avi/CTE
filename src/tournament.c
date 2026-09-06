@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg){
     if(!t || !cfg) return e_null;
@@ -372,3 +373,195 @@ void free_tournament(s_cte_tournament *t){
     if(!t) return;
     t->nb_matches = 0;
 }
+
+struct s_bench_wrapper {
+    t_evaluator real_eval;
+    void       *real_ctx;
+    uint64_t    total_moves;
+    double      total_time_us;
+};
+
+static uint16_t bench_wrapper_fn(const s_cte_game_state *state,
+                                  const struct s_cte_move_list *moves,
+                                  void *ctx)
+{
+    struct s_bench_wrapper *w = (struct s_bench_wrapper *)ctx;
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    uint16_t choice = w->real_eval(state, moves, w->real_ctx);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_us = (double)(t1.tv_sec - t0.tv_sec) * 1e6 +
+                        (double)(t1.tv_nsec - t0.tv_nsec) / 1e3;
+    w->total_time_us += elapsed_us;
+    w->total_moves++;
+    return choice;
+}
+
+t_cteerr cte_run_ai_benchmark(e_cte_ai_type type_a, void *ctx_a,
+                             e_cte_ai_type type_b, void *ctx_b,
+                             uint32_t nb_games,
+                             s_cte_bench_result *out)
+{
+    if(!out || nb_games == 0) return e_null;
+    memset(out, 0, sizeof(s_cte_bench_result));
+
+    const char *name_a = "AI_A";
+    const char *name_b = "AI_B";
+    t_evaluator eval_a = cte_get_evaluator(type_a, &name_a);
+    t_evaluator eval_b = cte_get_evaluator(type_b, &name_b);
+
+    snprintf(out->name_a, sizeof(out->name_a), "%s", name_a);
+    snprintf(out->name_b, sizeof(out->name_b), "%s", name_b);
+    out->nb_games = nb_games;
+
+    struct s_bench_wrapper wrap_a = {
+        .real_eval = eval_a,
+        .real_ctx  = ctx_a,
+        .total_moves = 0,
+        .total_time_us = 0.0
+    };
+    struct s_bench_wrapper wrap_b = {
+        .real_eval = eval_b,
+        .real_ctx  = ctx_b,
+        .total_moves = 0,
+        .total_time_us = 0.0
+    };
+
+    s_cte_game game;
+    char *names[2] = { out->name_a, out->name_b };
+    t_cteerr err = init_game(&game, 2, names, false);
+    if(err != e_ok) return err;
+
+    uint64_t total_pts_a = 0;
+    uint64_t total_pts_b = 0;
+
+    for(uint32_t g = 0; g < nb_games; g++){
+        reset_all_players(&game.players);
+
+        s_cte_round_config round_cfg = {
+            .is_team_mode  = false,
+            .callbacks     = NULL,
+            .ui_context    = NULL,
+        };
+
+        if((g % 2) == 0){
+            // Game g: Player A is in Seat 0 (starts), Player B in Seat 1
+            round_cfg.first_player     = 0;
+            round_cfg.evaluators[0]    = bench_wrapper_fn;
+            round_cfg.eval_contexts[0] = &wrap_a;
+            round_cfg.evaluators[1]    = bench_wrapper_fn;
+            round_cfg.eval_contexts[1] = &wrap_b;
+        } else {
+            // Game g: Player B is in Seat 0 (starts), Player A in Seat 1
+            round_cfg.first_player     = 0;
+            round_cfg.evaluators[0]    = bench_wrapper_fn;
+            round_cfg.eval_contexts[0] = &wrap_b;
+            round_cfg.evaluators[1]    = bench_wrapper_fn;
+            round_cfg.eval_contexts[1] = &wrap_a;
+        }
+
+        err = run_round(&game, &round_cfg);
+        if(err != e_ok){
+            free_game(&game);
+            return err;
+        }
+
+        s_cte_round_score scores[2];
+        err = compute_round_score(&game.players, scores, false);
+        if(err != e_ok){
+            free_game(&game);
+            return err;
+        }
+
+        uint16_t pts_a, pts_b;
+        uint16_t tab_a, tab_b;
+
+        if((g % 2) == 0){
+            pts_a = scores[0].total;
+            pts_b = scores[1].total;
+            tab_a = game.players.players[0].nb_tablic;
+            tab_b = game.players.players[1].nb_tablic;
+        } else {
+            pts_a = scores[1].total;
+            pts_b = scores[0].total;
+            tab_a = game.players.players[1].nb_tablic;
+            tab_b = game.players.players[0].nb_tablic;
+        }
+
+        total_pts_a += pts_a;
+        total_pts_b += pts_b;
+        out->total_tablics_a += tab_a;
+        out->total_tablics_b += tab_b;
+
+        if(pts_a > pts_b){
+            out->wins_a++;
+        } else if(pts_b > pts_a){
+            out->wins_b++;
+        } else {
+            out->draws++;
+        }
+    }
+
+    free_game(&game);
+
+    out->total_moves_a = wrap_a.total_moves;
+    out->total_moves_b = wrap_b.total_moves;
+    out->avg_latency_us_a = wrap_a.total_moves > 0 ? (wrap_a.total_time_us / (double)wrap_a.total_moves) : 0.0;
+    out->avg_latency_us_b = wrap_b.total_moves > 0 ? (wrap_b.total_time_us / (double)wrap_b.total_moves) : 0.0;
+
+    out->avg_pts_a = (double)total_pts_a / (double)nb_games;
+    out->avg_pts_b = (double)total_pts_b / (double)nb_games;
+
+    double score_pct_a = ((double)out->wins_a + 0.5 * (double)out->draws) / (double)nb_games;
+    out->win_rate_a = score_pct_a * 100.0;
+
+    if(score_pct_a <= 0.0001){
+        out->delta_elo_a = -800.0;
+    } else if(score_pct_a >= 0.9999){
+        out->delta_elo_a = +800.0;
+    } else {
+        out->delta_elo_a = -400.0 * log10((1.0 / score_pct_a) - 1.0);
+    }
+
+    return e_ok;
+}
+
+void cte_print_bench_result(const s_cte_bench_result *res){
+    if(!res) return;
+
+    printf("\n===================================================================================================\n");
+    printf("                     CTE AI HEAD-TO-HEAD BENCHMARK (%u ROUNDS)                                     \n", (unsigned)res->nb_games);
+    printf("===================================================================================================\n");
+    printf(" Participant          | Won  | Lost | Tied | Win%%   | Avg Pts | Tablics | Moves | Avg Latency      \n");
+    printf("----------------------|------|------|------|--------|---------|---------|-------|------------------\n");
+
+    double win_pct_b = 100.0 - res->win_rate_a;
+
+    char lat_a[32], lat_b[32];
+    if(res->avg_latency_us_a >= 1000.0){
+        snprintf(lat_a, sizeof(lat_a), "%6.2f ms", res->avg_latency_us_a / 1000.0);
+    } else {
+        snprintf(lat_a, sizeof(lat_a), "%6.1f us", res->avg_latency_us_a);
+    }
+    if(res->avg_latency_us_b >= 1000.0){
+        snprintf(lat_b, sizeof(lat_b), "%6.2f ms", res->avg_latency_us_b / 1000.0);
+    } else {
+        snprintf(lat_b, sizeof(lat_b), "%6.1f us", res->avg_latency_us_b);
+    }
+
+    printf(" %-20s | %4u | %4u | %4u | %5.1f%% |  %5.2f  |  %5u  | %5u | %s\n",
+           res->name_a, (unsigned)res->wins_a, (unsigned)res->wins_b, (unsigned)res->draws,
+           res->win_rate_a, res->avg_pts_a, (unsigned)res->total_tablics_a,
+           (unsigned)res->total_moves_a, lat_a);
+
+    printf(" %-20s | %4u | %4u | %4u | %5.1f%% |  %5.2f  |  %5u  | %5u | %s\n",
+           res->name_b, (unsigned)res->wins_b, (unsigned)res->wins_a, (unsigned)res->draws,
+           win_pct_b, res->avg_pts_b, (unsigned)res->total_tablics_b,
+           (unsigned)res->total_moves_b, lat_b);
+
+    printf("===================================================================================================\n");
+    printf(" Performance Delta    : %s is %+.1f Elo relative to %s\n",
+           res->name_a, res->delta_elo_a, res->name_b);
+    printf("===================================================================================================\n\n");
+}
+

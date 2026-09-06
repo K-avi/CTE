@@ -34,6 +34,7 @@ static void print_usage(const char *prog_name){
     printf("  -T, --tournament <type>    Run tournament: round-robin or cup\n");
     printf("  -P, --participant <spec>   Add tournament participant: 'name:type' (human/random/dumb/greedy/cheater)\n");
     printf("      --persist-ai           Persist AI bots in profile database\n");
+    printf("      --bench-ai <spec>      Head-to-head AI benchmark 'bot1:bot2' (e.g. 'cheater:greedy')\n");
     printf("  -p, --profile <name>       Active player profile for tracking statistics and Elo\n");
     printf("  -L, --leaderboard          Display player Elo leaderboard and exit\n");
     printf("  -h, --help                 Display this help message and exit\n\n");
@@ -97,6 +98,8 @@ int main(int argc, char **argv){
     s_cli_participant_spec cli_participants[CTE_MAX_TOURNAMENT_PLAYERS];
     uint8_t nb_cli_participants = 0;
     bool persist_ai = false;
+    bool is_bench_ai = false;
+    char bench_ai_spec[64] = {0};
 
     static struct option long_options[] = {
         {"players",       required_argument, 0, 'n'},
@@ -113,11 +116,13 @@ int main(int argc, char **argv){
         {"tournament",    required_argument, 0, 'T'},
         {"participant",   required_argument, 0, 'P'},
         {"persist-ai",    no_argument,       0, 1001},
+        {"bench-ai",      required_argument, 0, 1002},
         {"profile",       required_argument, 0, 'p'},
         {"leaderboard",   no_argument,       0, 'L'},
         {"help",          no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
+
 
     int opt;
     int option_index = 0;
@@ -261,6 +266,10 @@ int main(int argc, char **argv){
             case 1001:
                 persist_ai = true;
                 break;
+            case 1002:
+                is_bench_ai = true;
+                snprintf(bench_ai_spec, sizeof(bench_ai_spec), "%s", optarg);
+                break;
             case 'p':
                 profile_specified = true;
                 snprintf(profile_name, sizeof(profile_name), "%s", optarg);
@@ -288,6 +297,44 @@ int main(int argc, char **argv){
         print_leaderboard(&db);
         return 0;
     }
+
+    if(is_bench_ai){
+        char spec_copy[64];
+        snprintf(spec_copy, sizeof(spec_copy), "%s", bench_ai_spec);
+        char *sep = strchr(spec_copy, ':');
+        if(!sep) sep = strchr(spec_copy, ',');
+        if(!sep){
+            fprintf(stderr, "Error: Invalid benchmark spec '%s'. Format: 'bot1:bot2' or 'bot1,bot2' (e.g. 'greedy:cheater').\n", bench_ai_spec);
+            return 1;
+        }
+        *sep = '\0';
+        char *str_a = spec_copy;
+        char *str_b = sep + 1;
+        while(*str_b == ' ') str_b++;
+
+        e_cte_ai_type type_a, type_b;
+        if(!parse_ai_strategy(str_a, &type_a)){
+            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater\n", str_a);
+            return 1;
+        }
+        if(!parse_ai_strategy(str_b, &type_b)){
+            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater\n", str_b);
+            return 1;
+        }
+
+        uint32_t nb_games = (cli_config.max_rounds > 0) ? cli_config.max_rounds : 200;
+        printf("Running head-to-head AI benchmark: %s vs %s (%u rounds)...\n", str_a, str_b, (unsigned)nb_games);
+
+        s_cte_bench_result res;
+        t_cteerr b_err = cte_run_ai_benchmark(type_a, NULL, type_b, NULL, nb_games, &res);
+        if(b_err != e_ok){
+            fprintf(stderr, "Error: Benchmark failed with error code %d\n", b_err);
+            return 1;
+        }
+        cte_print_bench_result(&res);
+        return 0;
+    }
+
 
     if(!is_tournament && cli_config.is_team_mode && cli_config.nb_players != 4){
         fprintf(stderr, "Error: Team mode (-t / --team) is only valid with 4 players (-n 4).\n");

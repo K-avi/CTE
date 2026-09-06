@@ -63,6 +63,26 @@ typedef struct {
     int8_t                  champion_idx;                          // Index of winner, -1 if ongoing/tie
 } s_cte_tournament;
 
+// Statistical benchmark between two AIs
+typedef struct {
+    char     name_a[32];
+    char     name_b[32];
+    uint32_t nb_games;
+    uint32_t wins_a;
+    uint32_t wins_b;
+    uint32_t draws;
+    double   win_rate_a;       // (wins_a + 0.5 * draws) / nb_games
+    double   avg_pts_a;
+    double   avg_pts_b;
+    double   delta_elo_a;      // Relative Elo difference of A over B
+    uint64_t total_tablics_a;
+    uint64_t total_tablics_b;
+    uint64_t total_moves_a;
+    uint64_t total_moves_b;
+    double   avg_latency_us_a; // Average move latency in microseconds
+    double   avg_latency_us_b;
+} s_cte_bench_result;
+
 // Tournament API
 t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg);
 t_cteerr run_tournament(s_cte_tournament *t);
@@ -70,4 +90,13 @@ t_cteerr sync_tournament_profiles(const s_cte_tournament *t);
 void     print_tournament_standings(const s_cte_tournament *t, e_cte_render_style style);
 void     free_tournament(s_cte_tournament *t);
 
+// Headless AI Benchmark API
+t_cteerr cte_run_ai_benchmark(e_cte_ai_type type_a, void *ctx_a,
+                             e_cte_ai_type type_b, void *ctx_b,
+                             uint32_t nb_games,
+                             s_cte_bench_result *out);
+
+void cte_print_bench_result(const s_cte_bench_result *res);
+
 #endif
+

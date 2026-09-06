@@ -460,8 +460,25 @@ int run_test_tournament(void) {
         unlink(t34_db_path);
     }
 
+    // ---- Test Headless AI Benchmark API (cte_run_ai_benchmark) ----
+    {
+        s_cte_bench_result res;
+        assert(cte_run_ai_benchmark(AI_TYPE_GREEDY, NULL, AI_TYPE_DUMB, NULL, 0, &res) == e_null);
+        assert(cte_run_ai_benchmark(AI_TYPE_GREEDY, NULL, AI_TYPE_DUMB, NULL, 10, NULL) == e_null);
+
+        err = cte_run_ai_benchmark(AI_TYPE_GREEDY, NULL, AI_TYPE_DUMB, NULL, 10, &res);
+        assert(err == e_ok);
+        assert(res.nb_games == 10);
+        assert(res.wins_a + res.wins_b + res.draws == 10);
+        assert(res.wins_a >= 8); // Greedy decisively dominates Dumb
+        assert(res.avg_pts_a > res.avg_pts_b);
+        assert(res.total_moves_a > 0 && res.total_moves_b > 0);
+        assert(res.delta_elo_a > 0.0);
+    }
+
     return 0;
 }
+
 
 #ifdef TEST_STANDALONE
 int main(void) {
