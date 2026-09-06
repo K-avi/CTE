@@ -21,9 +21,11 @@ typedef struct {
 } s_cte_pos;
 
 typedef struct {
-    uint8_t  max_depth;    // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
-    uint32_t timeout_ms;   // Max time in ms for iterative deepening (0 = fixed depth)
+    uint8_t  max_depth;     // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
+    uint32_t timeout_ms;    // Max time in ms for iterative deepening (0 = fixed depth)
+    uint64_t nodes_visited; // Total search tree nodes visited
 } s_cte_search_config;
+
 
 // Convert s_cte_game_state to compact s_cte_pos
 s_cte_pos pos_from_state(const s_cte_game_state *state);
@@ -41,6 +43,6 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player);
 // Alpha-Beta / Minimax search with Iterative Deepening
 uint16_t search_best_move(const s_cte_pos *pos,
                           const struct s_cte_move_list *moves,
-                          const s_cte_search_config *config);
+                          s_cte_search_config *config);
 
 #endif

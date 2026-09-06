@@ -67,13 +67,18 @@ uint16_t eval_cheater(const s_cte_game_state *state,
     s_cte_pos pos = pos_from_state(state);
     s_cte_search_config cfg = {
         .max_depth = 2,
-        .timeout_ms = 0
+        .timeout_ms = 0,
+        .nodes_visited = 0
     };
     if(ctx != NULL){
         cfg = *(const s_cte_search_config *)ctx;
     }
 
-    return search_best_move(&pos, moves, &cfg);
+    uint16_t res = search_best_move(&pos, moves, &cfg);
+    if(ctx != NULL){
+        ((s_cte_search_config *)ctx)->nodes_visited += cfg.nodes_visited;
+    }
+    return res;
 }
 
 t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){

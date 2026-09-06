@@ -205,12 +205,57 @@ static bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_pl
     return false;
 }
 
+static inline int16_t score_compact_move(const s_cte_bitboard_move *m, uint64_t table_bb){
+    if(m->capture_mask == 0){
+        // Drop move: penalize dropping valuable cards
+        return (int16_t)(-(get_points(m->card_played) * 100));
+    }
+    int16_t score = 0;
+    if(table_bb > 0 && m->capture_mask == table_bb){
+        score += 10000; // Immediate Tablic bonus
+    }
+    uint8_t pts = get_points(m->card_played);
+    uint64_t temp = m->capture_mask;
+    uint8_t count = 0;
+    while(temp > 0){
+        int bit = __builtin_ctzll(temp);
+        pts += get_points((t_card)bit);
+        count++;
+        temp &= (temp - 1);
+    }
+    score += (int16_t)(pts * 100 + count * 10);
+    return score;
+}
+
+static void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb){
+    if(cpt->size <= 1) return;
+    int16_t scores[1024];
+    for(uint16_t i = 0; i < cpt->size; i++){
+        scores[i] = score_compact_move(&cpt->moves[i], table_bb);
+    }
+    for(uint16_t i = 1; i < cpt->size; i++){
+        s_cte_bitboard_move key_m = cpt->moves[i];
+        int16_t key_s = scores[i];
+        int j = (int)i - 1;
+        while(j >= 0 && scores[j] < key_s){
+            cpt->moves[j + 1] = cpt->moves[j];
+            scores[j + 1] = scores[j];
+            j--;
+        }
+        cpt->moves[j + 1] = key_m;
+        scores[j + 1] = key_s;
+    }
+}
+
 static int32_t alphabeta_search(const s_cte_pos *pos,
                                uint8_t depth,
                                int32_t alpha,
                                int32_t beta,
-                               uint8_t root_player)
+                               uint8_t root_player,
+                               uint64_t *node_counter)
 {
+    if(node_counter) (*node_counter)++;
+
     if(depth == 0){
         return pos_evaluate(pos, root_player);
     }
@@ -223,13 +268,31 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         }
     }
     if(all_empty){
+        // Endgame terminal: award remaining table cards to last captor
+        if(pos->table_bb > 0 && pos->last_captor >= 0 && pos->last_captor < pos->nb_players){
+            s_cte_pos terminal = *pos;
+            uint8_t captor = (uint8_t)terminal.last_captor;
+            uint64_t temp = terminal.table_bb;
+            uint8_t extra_pts = 0;
+            uint8_t extra_cards = 0;
+            while(temp > 0){
+                int bit = __builtin_ctzll(temp);
+                extra_pts += get_points((t_card)bit);
+                extra_cards++;
+                temp &= (temp - 1);
+            }
+            terminal.card_points[captor] += extra_pts;
+            terminal.won_card_counts[captor] += extra_cards;
+            terminal.table_bb = 0;
+            return pos_evaluate(&terminal, root_player);
+        }
         return pos_evaluate(pos, root_player);
     }
 
     if(pos->hand_counts[pos->current_player] == 0){
         s_cte_pos next_pos = *pos;
         next_pos.current_player = (uint8_t)((pos->current_player + 1) % pos->nb_players);
-        return alphabeta_search(&next_pos, depth, alpha, beta, root_player);
+        return alphabeta_search(&next_pos, depth, alpha, beta, root_player, node_counter);
     }
 
     struct s_cte_hand cur_hand;
@@ -246,13 +309,16 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         return pos_evaluate(pos, root_player);
     }
 
+    // Move ordering: evaluate tactical captures before drops
+    order_compact_moves(&cpt, pos->table_bb);
+
     bool maximizing = is_friendly(pos, pos->current_player, root_player);
 
     if(maximizing){
         int32_t max_eval = -INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
             if(eval > max_eval) max_eval = eval;
             if(eval > alpha) alpha = eval;
             if(beta <= alpha) break; // Beta cutoff
@@ -262,7 +328,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         int32_t min_eval = +INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
             if(eval < min_eval) min_eval = eval;
             if(eval < beta) beta = eval;
             if(beta <= alpha) break; // Alpha cutoff
@@ -271,27 +337,69 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     }
 }
 
+static inline int16_t score_root_move(const struct s_cte_move *m, uint64_t table_bb){
+    if(m->cards_picked.size == 0){
+        return (int16_t)(-(get_points(m->card_played) * 100));
+    }
+    int16_t score = 0;
+    uint64_t mask = 0;
+    uint8_t pts = get_points(m->card_played);
+    for(uint8_t i = 0; i < m->cards_picked.size; i++){
+        t_card c = m->cards_picked.array[i];
+        pts += get_points(c);
+        if(c < 52) mask |= (1ULL << c);
+    }
+    if(table_bb > 0 && mask == table_bb){
+        score += 10000;
+    }
+    score += (int16_t)(pts * 100 + m->cards_picked.size * 10);
+    return score;
+}
+
 uint16_t search_best_move(const s_cte_pos *pos,
                           const struct s_cte_move_list *moves,
-                          const s_cte_search_config *config)
+                          s_cte_search_config *config)
 {
     if(!moves || moves->size <= 1 || !pos) return 0;
 
     uint8_t depth = (config && config->max_depth > 0) ? config->max_depth : 2;
     uint8_t root_player = pos->current_player;
+    uint64_t *node_counter = (config != NULL) ? &config->nodes_visited : NULL;
 
-    uint16_t best_move_idx = 0;
+    // Order root moves by tactical quality
+    uint16_t order[1024];
+    int16_t scores[1024];
+    uint16_t n_moves = moves->size < 1024 ? moves->size : 1024;
+    for(uint16_t i = 0; i < n_moves; i++){
+        order[i] = i;
+        scores[i] = score_root_move(&moves->moves[i], pos->table_bb);
+    }
+    for(uint16_t i = 1; i < n_moves; i++){
+        uint16_t key_o = order[i];
+        int16_t key_s = scores[i];
+        int j = (int)i - 1;
+        while(j >= 0 && scores[j] < key_s){
+            order[j + 1] = order[j];
+            scores[j + 1] = scores[j];
+            j--;
+        }
+        order[j + 1] = key_o;
+        scores[j + 1] = key_s;
+    }
+
+    uint16_t best_move_idx = order[0];
     int32_t best_score = -INF_SCORE;
     int32_t alpha = -INF_SCORE;
     int32_t beta = +INF_SCORE;
 
-    for(uint16_t i = 0; i < moves->size; i++){
-        s_cte_pos next_pos = pos_apply_move(pos, &moves->moves[i]);
-        int32_t score = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player);
+    for(uint16_t i = 0; i < n_moves; i++){
+        uint16_t move_idx = order[i];
+        s_cte_pos next_pos = pos_apply_move(pos, &moves->moves[move_idx]);
+        int32_t score = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
 
         if(score > best_score){
             best_score = score;
-            best_move_idx = i;
+            best_move_idx = move_idx;
         }
         if(score > alpha){
             alpha = score;
@@ -300,3 +408,4 @@ uint16_t search_best_move(const s_cte_pos *pos,
 
     return best_move_idx;
 }
+
