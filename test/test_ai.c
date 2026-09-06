@@ -181,6 +181,47 @@ int run_test_ai(void) {
     // Support name_out == NULL
     assert(cte_get_evaluator(AI_TYPE_GREEDY, NULL) == eval_greedy);
 
+    // ---- T35 : Iterative Deepening & Search Tree Metadata ----
+    s_cte_pos iddfs_pos;
+    memset(&iddfs_pos, 0, sizeof(iddfs_pos));
+    iddfs_pos.nb_players = 2;
+    iddfs_pos.current_player = 0;
+    iddfs_pos.table_bb = (1ULL << 11) | (1ULL << 9); // Dame + As
+    iddfs_pos.hand_counts[0] = 2;
+    iddfs_pos.hand_bb[0] = (1ULL << 12) | (1ULL << 0); // Roi + 2
+    iddfs_pos.hand_counts[1] = 2;
+    iddfs_pos.hand_bb[1] = (1ULL << 2) | (1ULL << 3);
+
+    struct s_cte_move_list iddfs_moves;
+    err = init_move_list(&iddfs_moves, 8);
+    assert(err == e_ok);
+    err = pos_gen_moves(&iddfs_moves, &iddfs_pos);
+    assert(err == e_ok);
+
+    s_cte_search_config iddfs_cfg = {
+        .max_depth = 2,
+        .timeout_ms = 0
+    };
+    uint16_t best_iddfs = search_best_move(&iddfs_pos, &iddfs_moves, &iddfs_cfg);
+    assert(iddfs_cfg.depth_reached == 2);
+    assert(iddfs_cfg.num_candidates == iddfs_moves.size);
+    assert(iddfs_cfg.nodes_visited > 0);
+    assert(iddfs_cfg.candidates[0].score >= iddfs_cfg.candidates[1].score);
+    assert(iddfs_cfg.candidates[0].depth_completed == 2);
+    assert(iddfs_moves.moves[best_iddfs].card_played == 12);
+
+    // Timeout behavior with high depth
+    s_cte_search_config timeout_cfg = {
+        .max_depth = 12,
+        .timeout_ms = 5 // 5ms budget
+    };
+    uint16_t timeout_best = search_best_move(&iddfs_pos, &iddfs_moves, &timeout_cfg);
+    assert(timeout_cfg.depth_reached >= 1);
+    assert(timeout_cfg.num_candidates == iddfs_moves.size);
+    assert(timeout_best < iddfs_moves.size);
+
+    free_move_list(&iddfs_moves);
+
     free_game(&game_ai);
     return 0;
 }

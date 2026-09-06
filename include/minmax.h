@@ -20,10 +20,23 @@ typedef struct {
     bool     is_team_mode;      // True for 4-player 2v2 team mode
 } s_cte_pos;
 
+#define CTE_MAX_ROOT_CANDIDATES 256
+
 typedef struct {
-    uint8_t  max_depth;     // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
-    uint32_t timeout_ms;    // Max time in ms for iterative deepening (0 = fixed depth)
-    uint64_t nodes_visited; // Total search tree nodes visited
+    uint16_t move_idx;         // Index into root moves list
+    int32_t  score;            // Evaluation score at last completed depth
+    uint8_t  depth_completed;  // Depth at which this move was fully evaluated
+    uint64_t nodes_spent;      // Nodes evaluated searching this branch
+    bool     refuted;          // True if pruned by upper bound or proven unviable
+} s_cte_root_candidate;
+
+typedef struct {
+    uint8_t  max_depth;         // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
+    uint32_t timeout_ms;        // Max time in ms for iterative deepening (0 = fixed depth)
+    uint64_t nodes_visited;     // Total search tree nodes visited
+    uint8_t  depth_reached;     // Max depth fully completed across all candidates
+    uint16_t num_candidates;    // Number of root candidates recorded
+    s_cte_root_candidate candidates[CTE_MAX_ROOT_CANDIDATES];
 } s_cte_search_config;
 
 

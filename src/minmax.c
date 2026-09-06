@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 
 #define INF_SCORE 10000000
 
@@ -356,53 +357,115 @@ static inline int16_t score_root_move(const struct s_cte_move *m, uint64_t table
     return score;
 }
 
+static inline uint64_t get_time_us(void){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)ts.tv_nsec / 1000ULL;
+}
+
+static void sort_candidates_by_score(s_cte_root_candidate *cands, uint16_t count){
+    if(count <= 1) return;
+    for(uint16_t i = 1; i < count; i++){
+        s_cte_root_candidate key = cands[i];
+        int j = (int)i - 1;
+        while(j >= 0 && cands[j].score < key.score){
+            cands[j + 1] = cands[j];
+            j--;
+        }
+        cands[j + 1] = key;
+    }
+}
+
 uint16_t search_best_move(const s_cte_pos *pos,
                           const struct s_cte_move_list *moves,
                           s_cte_search_config *config)
 {
-    if(!moves || moves->size <= 1 || !pos) return 0;
+    if(!moves || moves->size == 0 || !pos) return 0;
+    if(moves->size == 1) return 0;
 
-    uint8_t depth = (config && config->max_depth > 0) ? config->max_depth : 2;
+    uint8_t target_depth = (config && config->max_depth > 0) ? config->max_depth : 2;
+    uint32_t timeout_ms = config ? config->timeout_ms : 0;
     uint8_t root_player = pos->current_player;
     uint64_t *node_counter = (config != NULL) ? &config->nodes_visited : NULL;
 
-    // Order root moves by tactical quality
-    uint16_t order[1024];
-    int16_t scores[1024];
-    uint16_t n_moves = moves->size < 1024 ? moves->size : 1024;
-    for(uint16_t i = 0; i < n_moves; i++){
-        order[i] = i;
-        scores[i] = score_root_move(&moves->moves[i], pos->table_bb);
+    uint16_t num_candidates = moves->size < CTE_MAX_ROOT_CANDIDATES ? moves->size : CTE_MAX_ROOT_CANDIDATES;
+    s_cte_root_candidate cands[CTE_MAX_ROOT_CANDIDATES];
+
+    for(uint16_t i = 0; i < num_candidates; i++){
+        cands[i].move_idx = i;
+        cands[i].score = score_root_move(&moves->moves[i], pos->table_bb);
+        cands[i].depth_completed = 0;
+        cands[i].nodes_spent = 0;
+        cands[i].refuted = false;
     }
-    for(uint16_t i = 1; i < n_moves; i++){
-        uint16_t key_o = order[i];
-        int16_t key_s = scores[i];
-        int j = (int)i - 1;
-        while(j >= 0 && scores[j] < key_s){
-            order[j + 1] = order[j];
-            scores[j + 1] = scores[j];
-            j--;
+    // Initial heuristic ordering so best tactical captures lead depth 1
+    sort_candidates_by_score(cands, num_candidates);
+
+    uint16_t best_move_idx = cands[0].move_idx;
+    uint8_t depth_reached = 0;
+
+    uint64_t t_start_us = (timeout_ms > 0) ? get_time_us() : 0;
+    uint64_t time_limit_us = (uint64_t)timeout_ms * 1000ULL;
+
+    for(uint8_t d = 1; d <= target_depth; d++){
+        if(timeout_ms > 0 && d > 1){
+            uint64_t elapsed_us = get_time_us() - t_start_us;
+            if(elapsed_us >= time_limit_us){
+                break;
+            }
         }
-        order[j + 1] = key_o;
-        scores[j + 1] = key_s;
+
+        int32_t alpha = -INF_SCORE;
+        int32_t beta = +INF_SCORE;
+        int32_t d_best_score = -INF_SCORE;
+        uint16_t d_best_move_idx = cands[0].move_idx;
+        bool interrupted = false;
+
+        for(uint16_t i = 0; i < num_candidates; i++){
+            if(cands[i].refuted) continue;
+
+            if(timeout_ms > 0 && (d > 1 || i > 0)){
+                uint64_t elapsed_us = get_time_us() - t_start_us;
+                if(elapsed_us >= time_limit_us){
+                    interrupted = true;
+                    break;
+                }
+            }
+
+            uint64_t nodes_before = node_counter ? *node_counter : 0;
+            s_cte_pos next_pos = pos_apply_move(pos, &moves->moves[cands[i].move_idx]);
+            int32_t score = alphabeta_search(&next_pos, d - 1, alpha, beta, root_player, node_counter);
+            uint64_t nodes_after = node_counter ? *node_counter : 0;
+            if(node_counter) cands[i].nodes_spent += (nodes_after - nodes_before);
+
+            cands[i].score = score;
+            cands[i].depth_completed = d;
+
+            if(score > d_best_score){
+                d_best_score = score;
+                d_best_move_idx = cands[i].move_idx;
+            }
+            if(score > alpha){
+                alpha = score;
+            }
+        }
+
+        if(!interrupted){
+            best_move_idx = d_best_move_idx;
+            depth_reached = d;
+            // Order candidates by depth d score: principal variation is tried first at depth d+1!
+            sort_candidates_by_score(cands, num_candidates);
+        } else {
+            // Partial depth interrupted by timeout: discard and retain best_move_idx from completed depth
+            break;
+        }
     }
 
-    uint16_t best_move_idx = order[0];
-    int32_t best_score = -INF_SCORE;
-    int32_t alpha = -INF_SCORE;
-    int32_t beta = +INF_SCORE;
-
-    for(uint16_t i = 0; i < n_moves; i++){
-        uint16_t move_idx = order[i];
-        s_cte_pos next_pos = pos_apply_move(pos, &moves->moves[move_idx]);
-        int32_t score = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
-
-        if(score > best_score){
-            best_score = score;
-            best_move_idx = move_idx;
-        }
-        if(score > alpha){
-            alpha = score;
+    if(config != NULL){
+        config->depth_reached = depth_reached;
+        config->num_candidates = num_candidates;
+        for(uint16_t i = 0; i < num_candidates; i++){
+            config->candidates[i] = cands[i];
         }
     }
 

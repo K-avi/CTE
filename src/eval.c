@@ -1,6 +1,7 @@
 #include "eval.h"
 #include "minmax.h"
 #include <stdlib.h>
+#include <string.h>
 
 // Pure uniform-random move evaluator (zero I/O)
 uint16_t eval_random(const s_cte_game_state *state,
@@ -76,7 +77,11 @@ uint16_t eval_cheater(const s_cte_game_state *state,
 
     uint16_t res = search_best_move(&pos, moves, &cfg);
     if(ctx != NULL){
-        ((s_cte_search_config *)ctx)->nodes_visited += cfg.nodes_visited;
+        s_cte_search_config *out_cfg = (s_cte_search_config *)ctx;
+        out_cfg->nodes_visited += cfg.nodes_visited;
+        out_cfg->depth_reached = cfg.depth_reached;
+        out_cfg->num_candidates = cfg.num_candidates;
+        memcpy(out_cfg->candidates, cfg.candidates, sizeof(cfg.candidates));
     }
     return res;
 }

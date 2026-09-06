@@ -26,7 +26,7 @@ int main(void) {
     printf("[PASS] Tournament, Profiles & Elo tests passed.\n");
 
     printf("===================================================\n");
-    printf("       All 34 tests passed successfully!           \n");
+    printf("       All 35 tests passed successfully!           \n");
     printf("===================================================\n");
 
     return 0;
