@@ -160,6 +160,52 @@ static inline uint16_t get_rank_mask(uint64_t bb){
     return (uint16_t)((bb & 0x1FFF) | ((bb >> 13) & 0x1FFF) | ((bb >> 26) & 0x1FFF) | ((bb >> 39) & 0x1FFF));
 }
 
+static inline int32_t evaluate_tablic_potential(const s_cte_pos *pos, uint8_t root_player){
+    if(pos->table_bb == 0) return 0;
+
+    uint8_t table_count = (uint8_t)__builtin_popcountll(pos->table_bb);
+    if(table_count > 2) return 0;
+
+    uint8_t cur = pos->current_player;
+    uint16_t cur_ranks = get_rank_mask(pos->hand_bb[cur]);
+    if(cur_ranks == 0) return 0;
+
+    bool tablic_possible = false;
+
+    if(table_count == 1){
+        t_card tc = (t_card)__builtin_ctzll(pos->table_bb);
+        uint8_t trank = (uint8_t)(tc % 13);
+        if(cur_ranks & (1U << trank)){
+            tablic_possible = true;
+        }
+    } else if(table_count == 2){
+        uint64_t tbl = pos->table_bb;
+        t_card tc1 = (t_card)__builtin_ctzll(tbl);
+        t_card tc2 = (t_card)__builtin_ctzll(tbl & (tbl - 1));
+        uint8_t r1 = (uint8_t)(tc1 % 13);
+        uint8_t r2 = (uint8_t)(tc2 % 13);
+
+        // Sum with standard nominal values: req_rank = r1 + r2 + 2
+        uint8_t req_rank = (uint8_t)(r1 + r2 + 2);
+        if(req_rank <= 12 && (cur_ranks & (1U << req_rank))){
+            tablic_possible = true;
+        }
+        // If tc1 is Ace (rank 9), can count as 1: req_rank = r2 + 1
+        if(!tablic_possible && r1 == 9 && (r2 + 1) <= 12 && (cur_ranks & (1U << (r2 + 1)))){
+            tablic_possible = true;
+        }
+        // If tc2 is Ace (rank 9), can count as 1: req_rank = r1 + 1
+        if(!tablic_possible && r2 == 9 && (r1 + 1) <= 12 && (cur_ranks & (1U << (r1 + 1)))){
+            tablic_possible = true;
+        }
+    }
+
+    if(!tablic_possible) return 0;
+
+    int32_t bonus = (table_count == 1) ? 150 : 100;
+    return is_friendly(pos, cur, root_player) ? bonus : -bonus;
+}
+
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
     if(!pos) return 0;
 
@@ -217,6 +263,9 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
             int32_t opp_match = __builtin_popcount(opp_ranks & tbl_ranks);
             score += (my_match - opp_match) * 15;
         }
+
+        // Tablic potential: bonus/penalty if immediate table clearance is reachable
+        score += evaluate_tablic_potential(pos, root_player);
 
         return score;
     } else {
@@ -277,6 +326,9 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
             }
             score += (my_match - max_opp_match) * 15;
         }
+
+        // Tablic potential: bonus/penalty if immediate table clearance is reachable
+        score += evaluate_tablic_potential(pos, root_player);
 
         return score;
     }
