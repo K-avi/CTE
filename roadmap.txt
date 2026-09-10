@@ -40,17 +40,20 @@ Steps & Roadmap :
         - [x] Compact 64-byte L1 cache snapshot (s_cte_pos)
         - [x] Alpha-Beta pruning search (search_best_move)
         - [x] Cheater / Oracle lookahead evaluator (eval_cheater)
-   [ ] Advanced Search & Optimization:
-        - [ ] Move ordering (score_move heuristic & PV move first)
-        - [ ] Principal Variation (PV) caching & turn reuse
-        - [ ] Transposition Table (TT) with Zobrist hashing (re-evaluate for multi-deal solver)
-        - [ ] Multi-Deal Omniscient Cheater & Endgame Solver (depth up to 48 plies):
-             * Exploit full deck visibility from s_cte_game_state across all 4 deals (48 plies total)
-             * Exact terminal resolution for Deal 4 (last 12 cards, 0 in deck, exact score without heuristics)
-             * 24-ply endgame solver for Deals 3 + 4 with Transposition Table and deep pruning
-             * Cross-deal lookahead (d = 14..18) in early deals to anticipate next hand distributions
-        - [ ] Fair AI: Perfect Information Monte Carlo (PIMC determinization)
-        - [ ] Monte Carlo Tree Search (MCTS)
+   [ ] Advanced Search & Optimization (Mono-deal engine):
+        - [ ] Lightweight register-only move ordering (heuristic move sort without heap alloc)
+        - [ ] Selective endgame quiescence extension (d + 2..4 plies when hand <= 2)
+        - [ ] Principal Variation (PV) caching & root turn reuse
+   [ ] Deep Omniscient Cheater & Multi-Deal Solver (Oracle Track):
+        - [ ] Deck-aware state representation: track remaining shoe sequence from s_cte_game_state->deck
+        - [ ] Cross-deal lookahead (d = 14..18): anticipate opponent's upcoming cards across deal boundaries
+        - [ ] Deal 4 exact endgame resolution (last 12 cards, 0 in deck, 100% optimal minimax without heuristics)
+        - [ ] 24-ply deep minimax solver for Deals 3 + 4 with specialized Transposition Table
+        - [ ] Full-round 48-ply resolution research (theoretical benchmark ceiling for perfect Tablić play)
+   [ ] Imperfect Information & Fair AI (Fair Track):
+        - [ ] Bayesian card tracking & opponent hand probability distribution
+        - [ ] Perfect Information Monte Carlo (PIMC determinization across plausible hidden hands)
+        - [ ] Information Set Monte Carlo Tree Search (ISMCTS)
    [ ] Pipedream :
         - [ ] CTE NN: Neural Network evaluation & policy/value network (AlphaZero-like Tablić agent)
 
