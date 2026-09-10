@@ -173,12 +173,18 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
         int32_t my_cards = pos->won_card_counts[my_team] + pos->won_card_counts[my_team + 2];
         int32_t opp_cards = pos->won_card_counts[opp_team] + pos->won_card_counts[opp_team + 2];
 
-        // Estimated majority bonus
-        int32_t majority_bonus = 0;
-        if(my_cards >= 27) majority_bonus = +3;
-        else if(opp_cards >= 27) majority_bonus = -3;
+        // Continuous majority interpolation: smooth scaling towards the +3 pts (300 units) bonus
+        int32_t majority_units = 0;
+        if(my_cards >= 27){
+            majority_units = +300;
+        } else if(opp_cards >= 27){
+            majority_units = -300;
+        } else {
+            int32_t card_adv = my_cards - opp_cards;
+            majority_units = (card_adv * 300) / 27;
+        }
 
-        int32_t score = (my_pts - opp_pts + majority_bonus) * 100 + (my_cards - opp_cards) * 5;
+        int32_t score = (my_pts - opp_pts) * 100 + majority_units + (my_cards - opp_cards) * 5;
 
         // Last captor bonus: fractional tie-breaker credit for table points and cards
         if(pos->last_captor >= 0 && pos->table_bb > 0){
@@ -212,11 +218,18 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
             if(pos->won_card_counts[i] > max_opp_cards) max_opp_cards = pos->won_card_counts[i];
         }
 
-        int32_t majority_bonus = 0;
-        if(my_cards >= 27) majority_bonus = +3;
-        else if(max_opp_cards >= 27) majority_bonus = -3;
+        // Continuous majority interpolation: smooth scaling towards the +3 pts (300 units) bonus
+        int32_t majority_units = 0;
+        if(my_cards >= 27){
+            majority_units = +300;
+        } else if(max_opp_cards >= 27){
+            majority_units = -300;
+        } else {
+            int32_t card_adv = my_cards - max_opp_cards;
+            majority_units = (card_adv * 300) / 27;
+        }
 
-        int32_t score = (my_pts - max_opp_pts + majority_bonus) * 100 + (my_cards - max_opp_cards) * 5;
+        int32_t score = (my_pts - max_opp_pts) * 100 + majority_units + (my_cards - max_opp_cards) * 5;
 
         // Last captor bonus: fractional tie-breaker credit for table points and cards
         if(pos->last_captor >= 0 && pos->table_bb > 0){
