@@ -53,6 +53,40 @@ static bool parse_ai_strategy(const char *token, e_cte_ai_type *type_out){
     return false;
 }
 
+static bool parse_bench_bot(const char *token, e_cte_ai_type *type_out, s_cte_search_config *cfg_out, bool *has_cfg, char *name_out, size_t name_sz){
+    memset(cfg_out, 0, sizeof(s_cte_search_config));
+    cfg_out->max_depth = 2;
+    cfg_out->ubp_model = UBP_STRICT_ADMISSIBLE;
+    *has_cfg = false;
+
+    if(strncmp(token, "cheater", 7) == 0 || strncmp(token, "minimax", 7) == 0){
+        *type_out = AI_TYPE_CHEATER;
+        *has_cfg = true;
+        const char *p = token + 7;
+        if(strncmp(p, "-none", 5) == 0){
+            cfg_out->ubp_model = UBP_NONE;
+            p += 5;
+        } else if(strncmp(p, "-admissible", 11) == 0){
+            cfg_out->ubp_model = UBP_STRICT_ADMISSIBLE;
+            p += 11;
+        } else if(strncmp(p, "-notablic", 9) == 0){
+            cfg_out->ubp_model = UBP_NO_TABLIC;
+            p += 9;
+        } else if(strncmp(p, "-heuristic", 10) == 0){
+            cfg_out->ubp_model = UBP_TIGHT_HEURISTIC;
+            p += 10;
+        }
+        if(*p == '@'){
+            long d = strtol(p + 1, NULL, 10);
+            if(d >= 1 && d <= 12) cfg_out->max_depth = (uint8_t)d;
+        }
+        snprintf(name_out, name_sz, "%s", token);
+        return true;
+    }
+    snprintf(name_out, name_sz, "%s", token);
+    return parse_ai_strategy(token, type_out);
+}
+
 int main(int argc, char **argv){
     setlocale(LC_ALL, "");
 
@@ -312,25 +346,33 @@ int main(int argc, char **argv){
         char *str_b = sep + 1;
         while(*str_b == ' ') str_b++;
 
+        s_cte_search_config cfg_a, cfg_b;
+        bool has_cfg_a = false, has_cfg_b = false;
+        char name_a[32], name_b[32];
         e_cte_ai_type type_a, type_b;
-        if(!parse_ai_strategy(str_a, &type_a)){
-            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater\n", str_a);
+
+        if(!parse_bench_bot(str_a, &type_a, &cfg_a, &has_cfg_a, name_a, sizeof(name_a))){
+            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater[-none|-admissible|-notablic|-heuristic|@depth]\n", str_a);
             return 1;
         }
-        if(!parse_ai_strategy(str_b, &type_b)){
-            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater\n", str_b);
+        if(!parse_bench_bot(str_b, &type_b, &cfg_b, &has_cfg_b, name_b, sizeof(name_b))){
+            fprintf(stderr, "Error: Unknown AI type '%s'. Supported: random, dumb, greedy, cheater[-none|-admissible|-notablic|-heuristic|@depth]\n", str_b);
             return 1;
         }
 
         uint32_t nb_games = (cli_config.max_rounds > 0) ? cli_config.max_rounds : 200;
-        printf("Running head-to-head AI benchmark: %s vs %s (%u rounds)...\n", str_a, str_b, (unsigned)nb_games);
+        printf("Running head-to-head AI benchmark: %s vs %s (%u rounds)...\n", name_a, name_b, (unsigned)nb_games);
 
         s_cte_bench_result res;
-        t_cteerr b_err = cte_run_ai_benchmark(type_a, NULL, type_b, NULL, nb_games, &res);
+        t_cteerr b_err = cte_run_ai_benchmark(type_a, has_cfg_a ? &cfg_a : NULL,
+                                              type_b, has_cfg_b ? &cfg_b : NULL,
+                                              nb_games, &res);
         if(b_err != e_ok){
             fprintf(stderr, "Error: Benchmark failed with error code %d\n", b_err);
             return 1;
         }
+        snprintf(res.name_a, sizeof(res.name_a), "%s", name_a);
+        snprintf(res.name_b, sizeof(res.name_b), "%s", name_b);
         cte_print_bench_result(&res);
         return 0;
     }
@@ -476,6 +518,7 @@ int main(int argc, char **argv){
                 .is_team_mode  = cli_config.is_team_mode,
                 .game_type     = cli_config.game_type,
                 .nb_ai_types   = cli_config.nb_ai_types,
+                .cheater_depth = 4,
                 .style         = cli_config.style,
                 .winning_score = cli_config.winning_score,
                 .max_rounds    = cli_config.max_rounds,

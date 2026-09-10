@@ -24,6 +24,7 @@ static void on_turn_rot_test(const s_cte_game_state *st, const struct s_cte_move
 }
 
 int run_test_core(void) {
+    unsigned int mseed = test_get_seed();
     s_cte_game game;
     t_cteerr err = init_game(&game, 2, (char*[]){"Alice", "Bob"}, false);
     assert(err == e_ok);
@@ -62,7 +63,7 @@ int run_test_core(void) {
     }
 
     // Verify deck shuffle
-    srand(42);
+    srand(mseed ^ 0x42);
     struct deck local_deck;
     init_deck(&local_deck);
     shuffle_deck(&local_deck);
@@ -136,7 +137,7 @@ int run_test_core(void) {
         .eval_contexts   = { NULL, NULL, NULL, NULL },
     };
 
-    srand(99);
+    srand(mseed ^ 0x99);
     err = run_match(&match, &config);
     assert(err == e_ok);
     assert(match_is_over(&match));
@@ -155,7 +156,7 @@ int run_test_core(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    srand(777);
+    srand(mseed ^ 0x777);
     err = run_round(&game_3p, &config_3p);
     assert(err == e_ok);
     assert(game_3p.deck.cur_card == 52);
@@ -179,7 +180,7 @@ int run_test_core(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    srand(888);
+    srand(mseed ^ 0x888);
     err = run_round(&game_4p, &config_4p);
     assert(err == e_ok);
     assert(game_4p.deck.cur_card == 52);
@@ -198,7 +199,7 @@ int run_test_core(void) {
     };
 
     reset_all_players(&game_4p.players);
-    srand(999);
+    srand(mseed ^ 0x999);
     err = run_round(&game_4p, &config_team);
     assert(err == e_ok);
 
@@ -258,7 +259,7 @@ int run_test_core(void) {
             .ui_context    = &rot_ctx,
         };
 
-        srand(42);
+        srand(mseed ^ 0x4242);
         assert(run_match(&match_rot, &r_cfg_rot) == e_ok);
         assert(match_rot.round_nb == 2);
         assert(rot_ctx.turns == 2);
@@ -274,6 +275,7 @@ int run_test_core(void) {
 
 #ifdef TEST_STANDALONE
 int main(void) {
+    test_get_seed();
     run_test_core();
     printf("[PASS] test_core standalone\n");
     return 0;

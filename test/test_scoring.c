@@ -1,6 +1,7 @@
 #include "test_common.h"
 
 int run_test_scoring(void) {
+    unsigned int mseed = test_get_seed();
     s_cte_game game;
     t_cteerr err = init_game(&game, 2, (char*[]){"Alice", "Bob"}, false);
     assert(err == e_ok);
@@ -12,7 +13,7 @@ int run_test_scoring(void) {
         .eval_contexts   = { NULL, NULL, NULL, NULL },
     };
 
-    srand(12345);
+    srand(mseed ^ 0x12345);
     err = run_round(&game, &config);
     assert(err == e_ok);
     assert(game.deck.cur_card == 52);
@@ -59,9 +60,9 @@ int run_test_scoring(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    for(unsigned int s = 200; s < 250; s++){
+    for(unsigned int s = 0; s < 50; s++){
         reset_all_players(&game_ai.players);
-        srand(s);
+        srand(mseed + s * 23 + 200);
         err = run_round(&game_ai, &config_ai);
         assert(err == e_ok);
 
@@ -80,6 +81,7 @@ int run_test_scoring(void) {
 
 #ifdef TEST_STANDALONE
 int main(void) {
+    test_get_seed();
     run_test_scoring();
     printf("[PASS] test_scoring standalone\n");
     return 0;

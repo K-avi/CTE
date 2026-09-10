@@ -10,6 +10,7 @@ typedef struct {
     e_cli_game_type    game_type;
     e_cte_ai_type      ai_types[4];
     uint8_t            nb_ai_types;
+    uint8_t            cheater_depth; // Search depth for Cheater bot (2: Easy, 4: Normal, 6: Master; 0 defaults to 4)
     e_cte_render_style style;
     uint16_t           winning_score;
     uint8_t            max_rounds;

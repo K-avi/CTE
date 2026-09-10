@@ -335,6 +335,7 @@ int run_test_moves(void) {
 
 #ifdef TEST_STANDALONE
 int main(void) {
+    test_get_seed();
     run_test_moves();
     printf("[PASS] test_moves standalone\n");
     return 0;

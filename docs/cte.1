@@ -136,6 +136,7 @@ Enable persistent storage of AI bot statistics in the profile database (by defau
 .BR \-\-bench-ai " \fIbot1:bot2\fR"
 Run a headless statistical benchmark between two AI strategies across multiple rounds (set with \fB\-c\fR, default: 200).
 Alternates starting seats fairly, reporting win rates, average points, move latency, and relative Elo performance delta.
+Supports depth and Upper Bound Pruning (UBP) model specifiers, e.g. \fBcheater@4:cheater@2\fR or \fBcheater-admissible:cheater-none\fR (models: \fI-none\fR, \fI-admissible\fR, \fI-notablic\fR, \fI-heuristic\fR, or \fI@depth\fR).
 .TP
 .BR \-p ", " \-\-profile " \fIname\fR"
 

@@ -1,6 +1,7 @@
 #include "test_common.h"
 
 int run_test_ai(void) {
+    unsigned int mseed = test_get_seed();
     t_cteerr err;
 
     // ---- T20 : Validation score_move & Évaluateurs IA ----
@@ -18,7 +19,7 @@ int run_test_ai(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    srand(555);
+    srand(mseed ^ 0x555);
     err = run_round(&game_ai, &config_ai);
     assert(err == e_ok);
     assert(game_ai.deck.cur_card == 52);
@@ -32,7 +33,7 @@ int run_test_ai(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
     for (int seed = 0; seed < 20; seed++) {
-        srand((unsigned)seed * 1337 + 42);
+        srand(mseed + (unsigned)seed * 1337 + 42);
         reset_all_players(&game_ai.players);
         err = run_round(&game_ai, &config_rand);
         assert(err == e_ok);
@@ -82,9 +83,9 @@ int run_test_ai(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    for(unsigned int s = 300; s < 350; s++){
+    for(unsigned int s = 0; s < 50; s++){
         reset_all_players(&game_3p_fuzz.players);
-        srand(s);
+        srand(mseed + s * 101);
         err = run_round(&game_3p_fuzz, &config_3p_fuzz);
         assert(err == e_ok);
         assert(game_3p_fuzz.deck.cur_card == 52);
@@ -119,7 +120,7 @@ int run_test_ai(void) {
         .eval_contexts = { NULL, NULL, NULL, NULL },
     };
 
-    srand(7777);
+    srand(mseed ^ 0x7777);
     err = run_round(&backend_game, &backend_cfg);
     assert(err == e_ok);
     assert(backend_game.deck.cur_card == 52);
@@ -145,7 +146,7 @@ int run_test_ai(void) {
     assert(err == e_ok);
     assert(rnk_game.backend == backend_bb);
 
-    srand(8888);
+    srand(mseed ^ 0x8888);
     err = run_round(&rnk_game, &backend_cfg);
     assert(err == e_ok);
     assert(rnk_game.deck.cur_card == 52);
@@ -222,12 +223,124 @@ int run_test_ai(void) {
 
     free_move_list(&iddfs_moves);
 
+    // ---- T36 : Upper Bound Pruning (UBP) Multi-Models ----
+    s_cte_pos ubp_pos;
+    memset(&ubp_pos, 0, sizeof(ubp_pos));
+    ubp_pos.nb_players = 2;
+    ubp_pos.current_player = 0;
+    ubp_pos.table_bb = (1ULL << 10) | (1ULL << 8); // Valet + 10
+    ubp_pos.hand_counts[0] = 3;
+    ubp_pos.hand_bb[0] = (1ULL << 12) | (1ULL << 0) | (1ULL << 1); // Roi, 2, 3
+    ubp_pos.hand_counts[1] = 3;
+    ubp_pos.hand_bb[1] = (1ULL << 4) | (1ULL << 5) | (1ULL << 6);
+    ubp_pos.card_points[0] = 5;
+    ubp_pos.card_points[1] = 8;
+    ubp_pos.won_card_counts[0] = 12;
+    ubp_pos.won_card_counts[1] = 18;
+
+    int32_t ub_none = compute_upper_bound(&ubp_pos, 0, 2, UBP_NONE);
+    int32_t ub_strict = compute_upper_bound(&ubp_pos, 0, 2, UBP_STRICT_ADMISSIBLE);
+    int32_t ub_notablic = compute_upper_bound(&ubp_pos, 0, 2, UBP_NO_TABLIC);
+    int32_t ub_heuristic = compute_upper_bound(&ubp_pos, 0, 2, UBP_TIGHT_HEURISTIC);
+    int32_t lb_strict = compute_lower_bound(&ubp_pos, 0, 2, UBP_STRICT_ADMISSIBLE);
+
+    assert(ub_none > ub_strict);
+    assert(ub_strict >= ub_notablic);
+    assert(ub_notablic >= ub_heuristic);
+    assert(ub_strict >= lb_strict);
+
+    struct s_cte_move_list ubp_moves;
+    err = init_move_list(&ubp_moves, 8);
+    assert(err == e_ok);
+    err = pos_gen_moves(&ubp_moves, &ubp_pos);
+    assert(err == e_ok);
+
+    s_cte_search_config cfg_unpruned = {
+        .max_depth = 2,
+        .timeout_ms = 0,
+        .ubp_model = UBP_NONE
+    };
+    uint16_t best_unpruned = search_best_move(&ubp_pos, &ubp_moves, &cfg_unpruned);
+
+    s_cte_search_config cfg_strict = {
+        .max_depth = 2,
+        .timeout_ms = 0,
+        .ubp_model = UBP_STRICT_ADMISSIBLE
+    };
+    uint16_t best_strict = search_best_move(&ubp_pos, &ubp_moves, &cfg_strict);
+
+    // Strict admissible upper bound must find the identical move as full unpruned search
+    assert(best_unpruned == best_strict);
+    assert(cfg_strict.nodes_visited <= cfg_unpruned.nodes_visited);
+
+    free_move_list(&ubp_moves);
+
+    // ---- T37 : TUI Cheater Difficulty & UBP_NO_TABLIC Configuration ----
+    s_cte_game game_diff;
+    char *diff_names[2] = { "Cheater_Bot", "Greedy_Bot" };
+    err = init_game(&game_diff, 2, diff_names, false);
+    assert(err == e_ok);
+    err = setup_round(&game_diff);
+    assert(err == e_ok);
+
+    struct s_cte_move_list test_moves;
+    err = init_move_list(&test_moves, 16);
+    assert(err == e_ok);
+    err = gen_all_moves(&test_moves, game_diff.table_bb, &game_diff.players.players[0].hand);
+    assert(err == e_ok);
+    assert(test_moves.size > 0);
+
+    s_cte_game_state st = {
+        .table_bb = game_diff.table_bb,
+        .players = &game_diff.players,
+        .deck = &game_diff.deck,
+        .current_player_id = 0,
+        .is_team_mode = false,
+    };
+
+    // Test Cheater Easy (depth 2, UBP_NO_TABLIC)
+    s_cte_search_config cfg_easy = {
+        .max_depth = 2,
+        .timeout_ms = 0,
+        .ubp_model = UBP_NO_TABLIC
+    };
+    uint16_t move_easy = eval_cheater(&st, &test_moves, &cfg_easy);
+    assert(move_easy < test_moves.size);
+    assert(cfg_easy.nodes_visited > 0);
+    assert(cfg_easy.depth_reached == 2);
+
+    // Test Cheater Normal (depth 4, UBP_NO_TABLIC)
+    s_cte_search_config cfg_normal = {
+        .max_depth = 4,
+        .timeout_ms = 0,
+        .ubp_model = UBP_NO_TABLIC
+    };
+    uint16_t move_normal = eval_cheater(&st, &test_moves, &cfg_normal);
+    assert(move_normal < test_moves.size);
+    assert(cfg_normal.nodes_visited >= cfg_easy.nodes_visited);
+    assert(cfg_normal.depth_reached == 4);
+
+    // Test Cheater Master (depth 6, UBP_NO_TABLIC)
+    s_cte_search_config cfg_master = {
+        .max_depth = 6,
+        .timeout_ms = 0,
+        .ubp_model = UBP_NO_TABLIC
+    };
+    uint16_t move_master = eval_cheater(&st, &test_moves, &cfg_master);
+    assert(move_master < test_moves.size);
+    assert(cfg_master.nodes_visited >= cfg_normal.nodes_visited);
+    assert(cfg_master.depth_reached == 6);
+
+    free_move_list(&test_moves);
+    free_game(&game_diff);
+
     free_game(&game_ai);
     return 0;
 }
 
 #ifdef TEST_STANDALONE
 int main(void) {
+    test_get_seed();
     run_test_ai();
     printf("[PASS] test_ai standalone\n");
     return 0;

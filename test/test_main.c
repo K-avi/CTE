@@ -4,6 +4,8 @@ int main(void) {
     printf("===================================================\n");
     printf("              CTE TEST SUITE RUNNER                \n");
     printf("===================================================\n");
+    test_get_seed();
+    printf("\n");
 
     printf("[RUN] Running Core Game Logic tests...\n");
     run_test_core();
@@ -26,7 +28,7 @@ int main(void) {
     printf("[PASS] Tournament, Profiles & Elo tests passed.\n");
 
     printf("===================================================\n");
-    printf("       All 35 tests passed successfully!           \n");
+    printf("       All 38 tests passed successfully!           \n");
     printf("===================================================\n");
 
     return 0;

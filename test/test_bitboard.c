@@ -1,5 +1,6 @@
 #include "cte.h"
 #include "backend_bitboard.h"
+#include "test_common.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -41,7 +42,9 @@ static bool are_move_lists_identical(const struct s_cte_move_list *l1, const str
 int main(){
     printf("=======================================================\n");
     printf("     CTE - 2-WAY BITBOARD DIFFERENTIAL TEST SUITE      \n");
-    printf("=======================================================\n\n");
+    printf("=======================================================\n");
+    unsigned int mseed = test_get_seed();
+    printf("\n");
 
     const s_cte_engine_backend *be_arr = cte_get_backend(CTE_BACKEND_ARRAY);
     const s_cte_engine_backend *be_bb  = cte_get_backend(CTE_BACKEND_BITBOARD);
@@ -72,7 +75,7 @@ int main(){
     // BT2: Differential Fuzzing 2-Voies (10 000 positions)
     // -------------------------------------------------------------
     printf("[BT2] Running 2-Way Differential Fuzzing (10,000 positions)...\n");
-    srand(12345);
+    srand(mseed ^ 0x12345);
 
     uint32_t total_tested_moves = 0;
     for(uint32_t iter = 0; iter < 10000; iter++){
@@ -132,7 +135,7 @@ int main(){
     // BT3: Validation Différentielle du Générateur Motifs de Rangs SWAR (10 000 positions)
     // -------------------------------------------------------------
     printf("[BT3] Validating 1-Pass SWAR Rank Patterns Compact Generator (7.1 KB) vs Array Oracle (10,000 positions)...\n");
-    srand(98765);
+    srand(mseed ^ 0x98765);
 
     for(uint32_t iter = 0; iter < 10000; iter++){
         uint8_t deck_shuff[52];
@@ -203,7 +206,7 @@ int main(){
 
     for(unsigned int s = 0; s < 500; s++){
         reset_all_players(&game_bb.players);
-        srand(s * 13 + 37);
+        srand(mseed + s * 13 + 37);
 
         t_cteerr err = run_round(&game_bb, &r_cfg);
         assert(err == e_ok);
