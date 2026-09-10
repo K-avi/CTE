@@ -121,6 +121,14 @@ bench: build/bench_backends
 build/bench_backends: $(ENGINE_OBJS_REL) tools/bench_backends.c $(HDRS) | dirs
 	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o $@ $(ENGINE_OBJS_REL) tools/bench_backends.c -lm
 
+TOURN_OBJS_REL = $(patsubst src/%.c,$(OBJDIR_REL)/%.o,$(TOURN_SRCS))
+
+bench-cheater: build/bench_cheater
+	./build/bench_cheater
+
+build/bench_cheater: $(TOURN_OBJS_REL) tools/bench_cheater.c $(HDRS) | dirs
+	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o $@ $(TOURN_OBJS_REL) tools/bench_cheater.c -lm
+
 run-test: test
 run-test-bitboard: test-bitboard
 run-bench: bench

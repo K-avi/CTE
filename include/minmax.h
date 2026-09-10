@@ -30,12 +30,25 @@ typedef struct {
     bool     refuted;          // True if pruned by upper bound or proven unviable
 } s_cte_root_candidate;
 
+typedef enum {
+    UBP_NONE = 0,               // No upper bound pruning (standard alpha-beta)
+    UBP_STRICT_ADMISSIBLE = 1,  // 100% mathematically sound upper bound
+    UBP_NO_TABLIC = 2,          // Disregards future tablics
+    UBP_TIGHT_HEURISTIC = 3     // Aggressive heuristic upper bound
+} e_cte_ubp_model;
+
+// Forward declaration for eval function pointer
+struct s_cte_pos_fwd;
+
 typedef struct {
-    uint8_t  max_depth;         // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
-    uint32_t timeout_ms;        // Max time in ms for iterative deepening (0 = fixed depth)
-    uint64_t nodes_visited;     // Total search tree nodes visited
-    uint8_t  depth_reached;     // Max depth fully completed across all candidates
-    uint16_t num_candidates;    // Number of root candidates recorded
+    uint8_t         max_depth;         // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
+    uint32_t        timeout_ms;        // Max time in ms for iterative deepening (0 = fixed depth)
+    e_cte_ubp_model ubp_model;         // Upper Bound Pruning model to use
+    int32_t       (*eval_fn)(const s_cte_pos*, uint8_t); // Custom eval function (NULL = pos_evaluate)
+    uint64_t        nodes_visited;     // Total search tree nodes visited
+    uint64_t        ubp_cutoffs;       // Number of branches pruned by UBP
+    uint8_t         depth_reached;     // Max depth fully completed across all candidates
+    uint16_t        num_candidates;    // Number of root candidates recorded
     s_cte_root_candidate candidates[CTE_MAX_ROOT_CANDIDATES];
 } s_cte_search_config;
 
@@ -50,8 +63,15 @@ s_cte_pos pos_apply_bitboard_move(const s_cte_pos *pos, t_card card_played, uint
 // Generate legal moves for current player in pos
 t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos);
 
+// Upper Bound Pruning (UBP) bounds
+int32_t compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model);
+int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model);
+
 // Static evaluation function (from perspective of root_player)
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player);
+
+// Frozen baseline evaluation (pre-optimization) for A/B benchmarking
+int32_t pos_evaluate_v0(const s_cte_pos *pos, uint8_t root_player);
 
 // Alpha-Beta / Minimax search with Iterative Deepening
 uint16_t search_best_move(const s_cte_pos *pos,

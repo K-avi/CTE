@@ -198,6 +198,43 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
     }
 }
 
+// Frozen baseline evaluation (pre-optimization snapshot) for A/B benchmarking.
+// This is the original pos_evaluate without any of the optimization patches.
+int32_t pos_evaluate_v0(const s_cte_pos *pos, uint8_t root_player){
+    if(!pos) return 0;
+    uint8_t p = root_player % pos->nb_players;
+
+    if(pos->is_team_mode && pos->nb_players == 4){
+        uint8_t my_team = (uint8_t)(p % 2);
+        uint8_t opp_team = (uint8_t)(1 - my_team);
+        int32_t my_pts = (pos->card_points[my_team] + pos->card_points[my_team + 2])
+                       + 2 * (pos->tablic_counts[my_team] + pos->tablic_counts[my_team + 2]);
+        int32_t opp_pts = (pos->card_points[opp_team] + pos->card_points[opp_team + 2])
+                        + 2 * (pos->tablic_counts[opp_team] + pos->tablic_counts[opp_team + 2]);
+        int32_t my_cards = pos->won_card_counts[my_team] + pos->won_card_counts[my_team + 2];
+        int32_t opp_cards = pos->won_card_counts[opp_team] + pos->won_card_counts[opp_team + 2];
+        int32_t majority_bonus = 0;
+        if(my_cards >= 27) majority_bonus = +3;
+        else if(opp_cards >= 27) majority_bonus = -3;
+        return (my_pts - opp_pts + majority_bonus) * 100 + (my_cards - opp_cards) * 5;
+    } else {
+        int32_t my_pts = pos->card_points[p] + 2 * pos->tablic_counts[p];
+        int32_t my_cards = pos->won_card_counts[p];
+        int32_t max_opp_pts = 0;
+        int32_t max_opp_cards = 0;
+        for(uint8_t i = 0; i < pos->nb_players; i++){
+            if(i == p) continue;
+            int32_t o_pts = pos->card_points[i] + 2 * pos->tablic_counts[i];
+            if(o_pts > max_opp_pts) max_opp_pts = o_pts;
+            if(pos->won_card_counts[i] > max_opp_cards) max_opp_cards = pos->won_card_counts[i];
+        }
+        int32_t majority_bonus = 0;
+        if(my_cards >= 27) majority_bonus = +3;
+        else if(max_opp_cards >= 27) majority_bonus = -3;
+        return (my_pts - max_opp_pts + majority_bonus) * 100 + (my_cards - max_opp_cards) * 5;
+    }
+}
+
 static bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player){
     if(player_id == root_player) return true;
     if(pos->is_team_mode && pos->nb_players == 4){
@@ -248,17 +285,181 @@ static void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb
     }
 }
 
+int32_t compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+    if(!pos || model == UBP_NONE) return +INF_SCORE;
+
+    uint8_t p = root_player % pos->nb_players;
+    int32_t cur_my_pts, cur_my_cards, cur_my_tablics;
+    int32_t max_opp_pts = 0, max_opp_cards = 0;
+    int32_t total_won_pts = 0, total_won_cards = 0;
+
+    if(pos->is_team_mode && pos->nb_players == 4){
+        uint8_t my_team = (uint8_t)(p % 2);
+        uint8_t opp_team = (uint8_t)(1 - my_team);
+
+        cur_my_pts = pos->card_points[my_team] + pos->card_points[my_team + 2];
+        cur_my_tablics = pos->tablic_counts[my_team] + pos->tablic_counts[my_team + 2];
+        cur_my_cards = pos->won_card_counts[my_team] + pos->won_card_counts[my_team + 2];
+
+        int32_t opp_pts = pos->card_points[opp_team] + pos->card_points[opp_team + 2];
+        int32_t opp_tablics = pos->tablic_counts[opp_team] + pos->tablic_counts[opp_team + 2];
+        max_opp_pts = opp_pts + 2 * opp_tablics;
+        max_opp_cards = pos->won_card_counts[opp_team] + pos->won_card_counts[opp_team + 2];
+
+        total_won_pts = cur_my_pts + opp_pts;
+        total_won_cards = cur_my_cards + max_opp_cards;
+    } else {
+        cur_my_pts = pos->card_points[p];
+        cur_my_tablics = pos->tablic_counts[p];
+        cur_my_cards = pos->won_card_counts[p];
+        total_won_pts = cur_my_pts;
+        total_won_cards = cur_my_cards;
+
+        for(uint8_t i = 0; i < pos->nb_players; i++){
+            if(i == p) continue;
+            int32_t o_pts = pos->card_points[i] + 2 * pos->tablic_counts[i];
+            if(o_pts > max_opp_pts) max_opp_pts = o_pts;
+            if(pos->won_card_counts[i] > max_opp_cards) max_opp_cards = pos->won_card_counts[i];
+            total_won_pts += pos->card_points[i];
+            total_won_cards += pos->won_card_counts[i];
+        }
+    }
+
+    int32_t rem_pts = 22 - total_won_pts;
+    if(rem_pts < 0) rem_pts = 0;
+    int32_t rem_cards = 52 - total_won_cards;
+    if(rem_cards < 0) rem_cards = 0;
+
+    int32_t my_base_pts = cur_my_pts + 2 * cur_my_tablics;
+    int32_t my_max_pts;
+    int32_t max_majority = 0;
+    int32_t est_cards_diff;
+
+    if(model == UBP_TIGHT_HEURISTIC){
+        // Empirical capture estimation: points in hand + table + 50% of opp hands
+        uint8_t hand_pts = 0;
+        uint64_t my_h = pos->hand_bb[p];
+        if(pos->is_team_mode && pos->nb_players == 4) my_h |= pos->hand_bb[p + 2];
+        while(my_h > 0){
+            int b = __builtin_ctzll(my_h);
+            hand_pts += get_points((t_card)b);
+            my_h &= (my_h - 1);
+        }
+        uint8_t tbl_pts = 0;
+        uint64_t tbl = pos->table_bb;
+        while(tbl > 0){
+            int b = __builtin_ctzll(tbl);
+            tbl_pts += get_points((t_card)b);
+            tbl &= (tbl - 1);
+        }
+        int32_t opp_hand_pts = rem_pts - (hand_pts + tbl_pts);
+        if(opp_hand_pts < 0) opp_hand_pts = 0;
+        int32_t capturable_pts = hand_pts + tbl_pts + (opp_hand_pts / 2);
+
+        if(cur_my_cards + (rem_cards / 2) >= 27) max_majority = +3;
+        else if(max_opp_cards >= 27) max_majority = -3;
+
+        my_max_pts = my_base_pts + capturable_pts + max_majority;
+        est_cards_diff = (cur_my_cards + rem_cards / 2) - max_opp_cards;
+    } else {
+        // Strict admissible or no-tablic bound
+        int32_t max_tablic_pts = 0;
+        if(model == UBP_STRICT_ADMISSIBLE){
+            uint8_t my_turns = (depth + 1) / pos->nb_players;
+            uint8_t my_hand = pos->hand_counts[p];
+            if(pos->is_team_mode && pos->nb_players == 4) my_hand += pos->hand_counts[p + 2];
+            uint8_t max_tabs = my_turns < my_hand ? my_turns : my_hand;
+            max_tablic_pts = 2 * max_tabs;
+        }
+
+        if(cur_my_cards + rem_cards >= 27) max_majority = +3;
+        else if(max_opp_cards >= 27) max_majority = -3;
+
+        my_max_pts = my_base_pts + rem_pts + max_tablic_pts + max_majority;
+        est_cards_diff = (cur_my_cards + rem_cards) - max_opp_cards;
+    }
+
+    return (my_max_pts - max_opp_pts) * 100 + est_cards_diff * 5;
+}
+
+int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+    if(!pos || model == UBP_NONE) return -INF_SCORE;
+
+    uint8_t p = root_player % pos->nb_players;
+    int32_t cur_my_pts, cur_my_cards, cur_my_tablics;
+    int32_t max_opp_pts = 0, max_opp_cards = 0;
+    int32_t total_won_pts = 0, total_won_cards = 0;
+
+    if(pos->is_team_mode && pos->nb_players == 4){
+        uint8_t my_team = (uint8_t)(p % 2);
+        uint8_t opp_team = (uint8_t)(1 - my_team);
+
+        cur_my_pts = pos->card_points[my_team] + pos->card_points[my_team + 2];
+        cur_my_tablics = pos->tablic_counts[my_team] + pos->tablic_counts[my_team + 2];
+        cur_my_cards = pos->won_card_counts[my_team] + pos->won_card_counts[my_team + 2];
+
+        int32_t opp_pts = pos->card_points[opp_team] + pos->card_points[opp_team + 2];
+        int32_t opp_tablics = pos->tablic_counts[opp_team] + pos->tablic_counts[opp_team + 2];
+        max_opp_pts = opp_pts + 2 * opp_tablics;
+        max_opp_cards = pos->won_card_counts[opp_team] + pos->won_card_counts[opp_team + 2];
+
+        total_won_pts = cur_my_pts + opp_pts;
+        total_won_cards = cur_my_cards + max_opp_cards;
+    } else {
+        cur_my_pts = pos->card_points[p];
+        cur_my_tablics = pos->tablic_counts[p];
+        cur_my_cards = pos->won_card_counts[p];
+        total_won_pts = cur_my_pts;
+        total_won_cards = cur_my_cards;
+
+        for(uint8_t i = 0; i < pos->nb_players; i++){
+            if(i == p) continue;
+            int32_t o_pts = pos->card_points[i] + 2 * pos->tablic_counts[i];
+            if(o_pts > max_opp_pts) max_opp_pts = o_pts;
+            if(pos->won_card_counts[i] > max_opp_cards) max_opp_cards = pos->won_card_counts[i];
+            total_won_pts += pos->card_points[i];
+            total_won_cards += pos->won_card_counts[i];
+        }
+    }
+
+    int32_t rem_pts = 22 - total_won_pts;
+    if(rem_pts < 0) rem_pts = 0;
+    int32_t rem_cards = 52 - total_won_cards;
+    if(rem_cards < 0) rem_cards = 0;
+
+    int32_t my_base_pts = cur_my_pts + 2 * cur_my_tablics;
+    int32_t min_majority = 0;
+    if(cur_my_cards >= 27) min_majority = +3;
+    else if(max_opp_cards + rem_cards >= 27) min_majority = -3;
+
+    int32_t opp_max_tablic_pts = 0;
+    if(model == UBP_STRICT_ADMISSIBLE){
+        uint8_t opp_turns = depth;
+        opp_max_tablic_pts = 2 * opp_turns;
+    }
+
+    int32_t opp_max_pts = max_opp_pts + rem_pts + opp_max_tablic_pts;
+    int32_t min_cards_diff = cur_my_cards - (max_opp_cards + rem_cards);
+
+    return (my_base_pts - opp_max_pts + min_majority) * 100 + min_cards_diff * 5;
+}
+
+typedef int32_t (*t_eval_fn)(const s_cte_pos*, uint8_t);
+
 static int32_t alphabeta_search(const s_cte_pos *pos,
                                uint8_t depth,
                                int32_t alpha,
                                int32_t beta,
                                uint8_t root_player,
-                               uint64_t *node_counter)
+                               e_cte_ubp_model ubp_model,
+                               uint64_t *node_counter,
+                               uint64_t *ubp_cutoff_counter,
+                               t_eval_fn eval_fn)
 {
     if(node_counter) (*node_counter)++;
 
     if(depth == 0){
-        return pos_evaluate(pos, root_player);
+        return eval_fn(pos, root_player);
     }
 
     bool all_empty = true;
@@ -285,15 +486,33 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
             terminal.card_points[captor] += extra_pts;
             terminal.won_card_counts[captor] += extra_cards;
             terminal.table_bb = 0;
-            return pos_evaluate(&terminal, root_player);
+            return eval_fn(&terminal, root_player);
         }
-        return pos_evaluate(pos, root_player);
+        return eval_fn(pos, root_player);
     }
 
     if(pos->hand_counts[pos->current_player] == 0){
         s_cte_pos next_pos = *pos;
         next_pos.current_player = (uint8_t)((pos->current_player + 1) % pos->nb_players);
-        return alphabeta_search(&next_pos, depth, alpha, beta, root_player, node_counter);
+        return alphabeta_search(&next_pos, depth, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
+    }
+
+    bool maximizing = is_friendly(pos, pos->current_player, root_player);
+
+    if(ubp_model != UBP_NONE && depth > 0){
+        if(maximizing){
+            int32_t ub = compute_upper_bound(pos, root_player, depth, ubp_model);
+            if(ub <= alpha){
+                if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
+                return ub;
+            }
+        } else {
+            int32_t lb = compute_lower_bound(pos, root_player, depth, ubp_model);
+            if(lb >= beta){
+                if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
+                return lb;
+            }
+        }
     }
 
     struct s_cte_hand cur_hand;
@@ -313,13 +532,11 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     // Move ordering: evaluate tactical captures before drops
     order_compact_moves(&cpt, pos->table_bb);
 
-    bool maximizing = is_friendly(pos, pos->current_player, root_player);
-
     if(maximizing){
         int32_t max_eval = -INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
             if(eval > max_eval) max_eval = eval;
             if(eval > alpha) alpha = eval;
             if(beta <= alpha) break; // Beta cutoff
@@ -329,7 +546,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         int32_t min_eval = +INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, node_counter);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
             if(eval < min_eval) min_eval = eval;
             if(eval < beta) beta = eval;
             if(beta <= alpha) break; // Alpha cutoff
@@ -386,7 +603,9 @@ uint16_t search_best_move(const s_cte_pos *pos,
     uint8_t target_depth = (config && config->max_depth > 0) ? config->max_depth : 2;
     uint32_t timeout_ms = config ? config->timeout_ms : 0;
     uint8_t root_player = pos->current_player;
+    e_cte_ubp_model ubp_model = config ? config->ubp_model : UBP_STRICT_ADMISSIBLE;
     uint64_t *node_counter = (config != NULL) ? &config->nodes_visited : NULL;
+    uint64_t *ubp_cutoff_counter = (config != NULL) ? &config->ubp_cutoffs : NULL;
 
     uint16_t num_candidates = moves->size < CTE_MAX_ROOT_CANDIDATES ? moves->size : CTE_MAX_ROOT_CANDIDATES;
     s_cte_root_candidate cands[CTE_MAX_ROOT_CANDIDATES];
@@ -422,6 +641,10 @@ uint16_t search_best_move(const s_cte_pos *pos,
         bool interrupted = false;
 
         for(uint16_t i = 0; i < num_candidates; i++){
+            cands[i].refuted = false;
+        }
+
+        for(uint16_t i = 0; i < num_candidates; i++){
             if(cands[i].refuted) continue;
 
             if(timeout_ms > 0 && (d > 1 || i > 0)){
@@ -432,9 +655,21 @@ uint16_t search_best_move(const s_cte_pos *pos,
                 }
             }
 
-            uint64_t nodes_before = node_counter ? *node_counter : 0;
             s_cte_pos next_pos = pos_apply_move(pos, &moves->moves[cands[i].move_idx]);
-            int32_t score = alphabeta_search(&next_pos, d - 1, alpha, beta, root_player, node_counter);
+
+            // Root UBP check: if branch upper bound cannot beat current alpha, mark refuted
+            if(ubp_model != UBP_NONE && d > 1 && alpha > -INF_SCORE){
+                int32_t ub = compute_upper_bound(&next_pos, root_player, d - 1, ubp_model);
+                if(ub <= alpha){
+                    cands[i].refuted = true;
+                    if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
+                    continue;
+                }
+            }
+
+            uint64_t nodes_before = node_counter ? *node_counter : 0;
+            t_eval_fn eval_fn = (config && config->eval_fn) ? config->eval_fn : pos_evaluate;
+            int32_t score = alphabeta_search(&next_pos, d - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
             uint64_t nodes_after = node_counter ? *node_counter : 0;
             if(node_counter) cands[i].nodes_spent += (nodes_after - nodes_before);
 
