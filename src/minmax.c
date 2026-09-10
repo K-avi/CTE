@@ -156,6 +156,10 @@ t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
     return e_ok;
 }
 
+static inline uint16_t get_rank_mask(uint64_t bb){
+    return (uint16_t)((bb & 0x1FFF) | ((bb >> 13) & 0x1FFF) | ((bb >> 26) & 0x1FFF) | ((bb >> 39) & 0x1FFF));
+}
+
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
     if(!pos) return 0;
 
@@ -204,6 +208,16 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
             }
         }
 
+        // Hand capture quality: bonus for having cards matching table ranks
+        if(pos->table_bb > 0){
+            uint16_t tbl_ranks = get_rank_mask(pos->table_bb);
+            uint16_t my_ranks = get_rank_mask(pos->hand_bb[my_team] | pos->hand_bb[my_team + 2]);
+            uint16_t opp_ranks = get_rank_mask(pos->hand_bb[opp_team] | pos->hand_bb[opp_team + 2]);
+            int32_t my_match = __builtin_popcount(my_ranks & tbl_ranks);
+            int32_t opp_match = __builtin_popcount(opp_ranks & tbl_ranks);
+            score += (my_match - opp_match) * 15;
+        }
+
         return score;
     } else {
         int32_t my_pts = pos->card_points[p] + 2 * pos->tablic_counts[p];
@@ -247,6 +261,21 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
             } else {
                 score -= lc_bonus;
             }
+        }
+
+        // Hand capture quality: bonus for having cards matching table ranks
+        if(pos->table_bb > 0){
+            uint16_t tbl_ranks = get_rank_mask(pos->table_bb);
+            uint16_t my_ranks = get_rank_mask(pos->hand_bb[p]);
+            int32_t my_match = __builtin_popcount(my_ranks & tbl_ranks);
+            int32_t max_opp_match = 0;
+            for(uint8_t i = 0; i < pos->nb_players; i++){
+                if(i == p) continue;
+                uint16_t o_ranks = get_rank_mask(pos->hand_bb[i]);
+                int32_t o_match = __builtin_popcount(o_ranks & tbl_ranks);
+                if(o_match > max_opp_match) max_opp_match = o_match;
+            }
+            score += (my_match - max_opp_match) * 15;
         }
 
         return score;
