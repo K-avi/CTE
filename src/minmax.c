@@ -8,6 +8,8 @@
 
 #define INF_SCORE 10000000
 
+static bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player);
+
 s_cte_pos pos_from_state(const s_cte_game_state *state){
     s_cte_pos res;
     memset(&res, 0, sizeof(res));
@@ -176,7 +178,27 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
         if(my_cards >= 27) majority_bonus = +3;
         else if(opp_cards >= 27) majority_bonus = -3;
 
-        return (my_pts - opp_pts + majority_bonus) * 100 + (my_cards - opp_cards) * 5;
+        int32_t score = (my_pts - opp_pts + majority_bonus) * 100 + (my_cards - opp_cards) * 5;
+
+        // Last captor bonus: fractional tie-breaker credit for table points and cards
+        if(pos->last_captor >= 0 && pos->table_bb > 0){
+            uint8_t table_pts = 0;
+            uint8_t table_cards = 0;
+            uint64_t tbl = pos->table_bb;
+            while(tbl > 0){
+                table_pts += get_points((t_card)__builtin_ctzll(tbl));
+                table_cards++;
+                tbl &= (tbl - 1);
+            }
+            int32_t lc_bonus = (int32_t)table_pts * 20 + (int32_t)table_cards * 1;
+            if(is_friendly(pos, (uint8_t)pos->last_captor, p)){
+                score += lc_bonus;
+            } else {
+                score -= lc_bonus;
+            }
+        }
+
+        return score;
     } else {
         int32_t my_pts = pos->card_points[p] + 2 * pos->tablic_counts[p];
         int32_t my_cards = pos->won_card_counts[p];
@@ -194,7 +216,27 @@ int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player){
         if(my_cards >= 27) majority_bonus = +3;
         else if(max_opp_cards >= 27) majority_bonus = -3;
 
-        return (my_pts - max_opp_pts + majority_bonus) * 100 + (my_cards - max_opp_cards) * 5;
+        int32_t score = (my_pts - max_opp_pts + majority_bonus) * 100 + (my_cards - max_opp_cards) * 5;
+
+        // Last captor bonus: fractional tie-breaker credit for table points and cards
+        if(pos->last_captor >= 0 && pos->table_bb > 0){
+            uint8_t table_pts = 0;
+            uint8_t table_cards = 0;
+            uint64_t tbl = pos->table_bb;
+            while(tbl > 0){
+                table_pts += get_points((t_card)__builtin_ctzll(tbl));
+                table_cards++;
+                tbl &= (tbl - 1);
+            }
+            int32_t lc_bonus = (int32_t)table_pts * 20 + (int32_t)table_cards * 1;
+            if((uint8_t)pos->last_captor == p){
+                score += lc_bonus;
+            } else {
+                score -= lc_bonus;
+            }
+        }
+
+        return score;
     }
 }
 
