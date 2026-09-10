@@ -8,7 +8,7 @@
 
 #define INF_SCORE 10000000
 
-static bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player);
+static inline bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player);
 
 s_cte_pos pos_from_state(const s_cte_game_state *state){
     s_cte_pos res;
@@ -319,7 +319,7 @@ int32_t pos_evaluate_v0(const s_cte_pos *pos, uint8_t root_player){
     }
 }
 
-static bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player){
+static inline bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player){
     if(player_id == root_player) return true;
     if(pos->is_team_mode && pos->nb_players == 4){
         return (player_id % 2) == (root_player % 2);
@@ -349,7 +349,7 @@ static inline int16_t score_compact_move(const s_cte_bitboard_move *m, uint64_t 
     return score;
 }
 
-static void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb){
+static inline void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb){
     if(cpt->size <= 1) return;
     int16_t scores[1024];
     for(uint16_t i = 0; i < cpt->size; i++){
@@ -369,7 +369,7 @@ static void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb
     }
 }
 
-int32_t compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+static inline int32_t inline_compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
     if(!pos || model == UBP_NONE) return +INF_SCORE;
 
     uint8_t p = root_player % pos->nb_players;
@@ -466,7 +466,11 @@ int32_t compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t d
     return (my_max_pts - max_opp_pts) * 100 + est_cards_diff * 5;
 }
 
-int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+int32_t compute_upper_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+    return inline_compute_upper_bound(pos, root_player, depth, model);
+}
+
+static inline int32_t inline_compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
     if(!pos || model == UBP_NONE) return -INF_SCORE;
 
     uint8_t p = root_player % pos->nb_players;
@@ -528,6 +532,10 @@ int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t d
     return (my_base_pts - opp_max_pts + min_majority) * 100 + min_cards_diff * 5;
 }
 
+int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t depth, e_cte_ubp_model model){
+    return inline_compute_lower_bound(pos, root_player, depth, model);
+}
+
 typedef int32_t (*t_eval_fn)(const s_cte_pos*, uint8_t);
 
 static int32_t alphabeta_search(const s_cte_pos *pos,
@@ -543,6 +551,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     if(node_counter) (*node_counter)++;
 
     if(depth == 0){
+        if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(pos, root_player);
         return eval_fn(pos, root_player);
     }
 
@@ -570,8 +579,10 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
             terminal.card_points[captor] += extra_pts;
             terminal.won_card_counts[captor] += extra_cards;
             terminal.table_bb = 0;
+            if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(&terminal, root_player);
             return eval_fn(&terminal, root_player);
         }
+        if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(pos, root_player);
         return eval_fn(pos, root_player);
     }
 
@@ -585,13 +596,13 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
 
     if(ubp_model != UBP_NONE && depth > 0){
         if(maximizing){
-            int32_t ub = compute_upper_bound(pos, root_player, depth, ubp_model);
+            int32_t ub = inline_compute_upper_bound(pos, root_player, depth, ubp_model);
             if(ub <= alpha){
                 if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
                 return ub;
             }
         } else {
-            int32_t lb = compute_lower_bound(pos, root_player, depth, ubp_model);
+            int32_t lb = inline_compute_lower_bound(pos, root_player, depth, ubp_model);
             if(lb >= beta){
                 if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
                 return lb;
@@ -743,7 +754,7 @@ uint16_t search_best_move(const s_cte_pos *pos,
 
             // Root UBP check: if branch upper bound cannot beat current alpha, mark refuted
             if(ubp_model != UBP_NONE && d > 1 && alpha > -INF_SCORE){
-                int32_t ub = compute_upper_bound(&next_pos, root_player, d - 1, ubp_model);
+                int32_t ub = inline_compute_upper_bound(&next_pos, root_player, d - 1, ubp_model);
                 if(ub <= alpha){
                     cands[i].refuted = true;
                     if(ubp_cutoff_counter) (*ubp_cutoff_counter)++;
