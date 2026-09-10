@@ -43,7 +43,12 @@ Steps & Roadmap :
    [ ] Advanced Search & Optimization:
         - [ ] Move ordering (score_move heuristic & PV move first)
         - [ ] Principal Variation (PV) caching & turn reuse
-        - [ ] Transposition Table (TT) with Zobrist hashing
+        - [ ] Transposition Table (TT) with Zobrist hashing (re-evaluate for multi-deal solver)
+        - [ ] Multi-Deal Omniscient Cheater & Endgame Solver (depth up to 48 plies):
+             * Exploit full deck visibility from s_cte_game_state across all 4 deals (48 plies total)
+             * Exact terminal resolution for Deal 4 (last 12 cards, 0 in deck, exact score without heuristics)
+             * 24-ply endgame solver for Deals 3 + 4 with Transposition Table and deep pruning
+             * Cross-deal lookahead (d = 14..18) in early deals to anticipate next hand distributions
         - [ ] Fair AI: Perfect Information Monte Carlo (PIMC determinization)
         - [ ] Monte Carlo Tree Search (MCTS)
    [ ] Pipedream :
