@@ -91,6 +91,28 @@ uint16_t eval_cheater(const s_cte_game_state *state,
     return res;
 }
 
+// Deep Omniscient Oracle evaluator (multi-deal lookahead + Deal 4 exact resolution)
+uint16_t eval_oracle(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx)
+{
+    s_cte_search_config cfg = {
+        .max_depth     = 6,
+        .timeout_ms    = 0,
+        .ubp_model     = UBP_NO_TABLIC,
+        .multi_deal    = true,
+        .solve_deal4   = true,
+        .nodes_visited = 0,
+        .ubp_cutoffs   = 0
+    };
+    if(ctx != NULL){
+        cfg = *(const s_cte_search_config *)ctx;
+        cfg.multi_deal = true;
+        cfg.solve_deal4 = true;
+    }
+    return eval_cheater(state, moves, &cfg);
+}
+
 t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){
     switch(type){
         case AI_TYPE_DUMB:
@@ -102,6 +124,9 @@ t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){
         case AI_TYPE_CHEATER:
             if(name_out) *name_out = "Cheater";
             return eval_cheater;
+        case AI_TYPE_ORACLE:
+            if(name_out) *name_out = "Oracle";
+            return eval_oracle;
         case AI_TYPE_RANDOM:
         default:
             if(name_out) *name_out = "Random";

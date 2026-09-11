@@ -32,9 +32,9 @@ static void print_usage(const char *prog_name){
     printf("  -c, --rounds <number>      Max number of rounds/deck cycles (default: 0 = unlimited)\n");
     printf("  -r, --seed <number>        RNG seed (default: system time)\n");
     printf("  -T, --tournament <type>    Run tournament: round-robin or cup\n");
-    printf("  -P, --participant <spec>   Add tournament participant: 'name:type' (human/random/dumb/greedy/cheater)\n");
+    printf("  -P, --participant <spec>   Add tournament participant: 'name:type' (human/random/dumb/greedy/cheater/oracle)\n");
     printf("      --persist-ai           Persist AI bots in profile database\n");
-    printf("      --bench-ai <spec>      Head-to-head AI benchmark 'bot1:bot2' (e.g. 'cheater:greedy')\n");
+    printf("      --bench-ai <spec>      Head-to-head AI benchmark 'bot1:bot2' (e.g. 'cheater:greedy', 'oracle:cheater')\n");
     printf("  -p, --profile <name>       Active player profile for tracking statistics and Elo\n");
     printf("  -L, --leaderboard          Display player Elo leaderboard and exit\n");
     printf("  -h, --help                 Display this help message and exit\n\n");
@@ -49,6 +49,8 @@ static bool parse_ai_strategy(const char *token, e_cte_ai_type *type_out){
         *type_out = AI_TYPE_GREEDY; return true;
     } else if(strcmp(token, "cheater") == 0 || strcmp(token, "minimax") == 0){
         *type_out = AI_TYPE_CHEATER; return true;
+    } else if(strcmp(token, "oracle") == 0 || strcmp(token, "solver") == 0){
+        *type_out = AI_TYPE_ORACLE; return true;
     }
     return false;
 }
@@ -58,6 +60,22 @@ static bool parse_bench_bot(const char *token, e_cte_ai_type *type_out, s_cte_se
     cfg_out->max_depth = 2;
     cfg_out->ubp_model = UBP_STRICT_ADMISSIBLE;
     *has_cfg = false;
+
+    if(strncmp(token, "oracle", 6) == 0 || strncmp(token, "solver", 6) == 0){
+        *type_out = AI_TYPE_ORACLE;
+        *has_cfg = true;
+        cfg_out->max_depth = 6;
+        cfg_out->ubp_model = UBP_NO_TABLIC;
+        cfg_out->multi_deal = true;
+        cfg_out->solve_deal4 = true;
+        const char *p = (strncmp(token, "oracle", 6) == 0) ? token + 6 : token + 6;
+        if(*p == '@'){
+            long d = strtol(p + 1, NULL, 10);
+            if(d >= 1 && d <= 12) cfg_out->max_depth = (uint8_t)d;
+        }
+        snprintf(name_out, name_sz, "%s", token);
+        return true;
+    }
 
     if(strncmp(token, "cheater", 7) == 0 || strncmp(token, "minimax", 7) == 0){
         *type_out = AI_TYPE_CHEATER;
@@ -186,7 +204,7 @@ int main(int argc, char **argv){
                 while(token && cli_config.nb_ai_types < 4){
                     e_cte_ai_type type;
                     if(!parse_ai_strategy(token, &type)){
-                        fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater\n", token);
+                        fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater, oracle\n", token);
                         free(arg_copy);
                         return 1;
                     }
@@ -287,7 +305,7 @@ int main(int argc, char **argv){
                     } else if(parse_ai_strategy(type_token, &spec->ai_type)){
                         spec->is_human = false;
                     } else {
-                        fprintf(stderr, "Error: Unknown participant type '%s'. Supported: human, random, dumb, greedy, cheater\n", type_token);
+                        fprintf(stderr, "Error: Unknown participant type '%s'. Supported: human, random, dumb, greedy, cheater, oracle\n", type_token);
                         free(arg_copy);
                         return 1;
                     }

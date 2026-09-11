@@ -482,6 +482,8 @@ int run_tui_frontend(const s_cte_tui_config *config) {
         if (ai_t == AI_TYPE_CHEATER) {
           const char *lvl_label = (eff_depth <= 2) ? "Easy" : (eff_depth <= 4 ? "Normal" : "Master");
           snprintf(base_name, sizeof(base_name), "Bot %u (Cheater-%s)", (unsigned)i, lvl_label);
+        } else if (ai_t == AI_TYPE_ORACLE) {
+          snprintf(base_name, sizeof(base_name), "Bot %u (Oracle)", (unsigned)i);
         } else {
           snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)i,
                    strat_name);
@@ -497,6 +499,8 @@ int run_tui_frontend(const s_cte_tui_config *config) {
       if (ai_t == AI_TYPE_CHEATER) {
         const char *lvl_label = (eff_depth <= 2) ? "Easy" : (eff_depth <= 4 ? "Normal" : "Master");
         snprintf(base_name, sizeof(base_name), "Bot %u (Cheater-%s)", (unsigned)(i + 1), lvl_label);
+      } else if (ai_t == AI_TYPE_ORACLE) {
+        snprintf(base_name, sizeof(base_name), "Bot %u (Oracle)", (unsigned)(i + 1));
       } else {
         snprintf(base_name, sizeof(base_name), "Bot %u (%s)", (unsigned)(i + 1),
                  strat_name);
@@ -524,7 +528,13 @@ int run_tui_frontend(const s_cte_tui_config *config) {
     game.players.players[i].evaluator = slot_evaluators[i];
     if (slot_is_human[i]) {
       game.players.players[i].eval_context = &ui_ctx;
-    } else if (slot_evaluators[i] == eval_cheater) {
+    } else if (slot_evaluators[i] == eval_cheater || slot_evaluators[i] == eval_oracle) {
+      if (slot_evaluators[i] == eval_oracle) {
+        bot_configs[i].max_depth = 6;
+        bot_configs[i].solve_deal4 = true;
+        bot_configs[i].multi_deal = true;
+        bot_configs[i].ubp_model = UBP_NO_TABLIC;
+      }
       game.players.players[i].eval_context = &bot_configs[i];
     } else {
       game.players.players[i].eval_context = NULL;
@@ -650,6 +660,7 @@ static void tui_menu_quick_match(void) {
                                                              : "AI vs AI";
     const char *ai_str = (ai_strat == AI_TYPE_GREEDY)    ? "Greedy"
                          : (ai_strat == AI_TYPE_CHEATER) ? "Cheater (Minimax)"
+                         : (ai_strat == AI_TYPE_ORACLE)  ? "Oracle (Solver)"
                          : (ai_strat == AI_TYPE_RANDOM)  ? "Random"
                                                          : "Dumb";
     const char *style_str = (style == CTE_RENDER_UNICODE) ? "Unicode" : "ASCII";
@@ -721,7 +732,8 @@ static void tui_menu_quick_match(void) {
           team_mode = !team_mode;
       } else if (selected == 3) {
         ai_strat = (ai_strat == AI_TYPE_GREEDY)    ? AI_TYPE_CHEATER
-                   : (ai_strat == AI_TYPE_CHEATER) ? AI_TYPE_RANDOM
+                   : (ai_strat == AI_TYPE_CHEATER) ? AI_TYPE_ORACLE
+                   : (ai_strat == AI_TYPE_ORACLE)  ? AI_TYPE_RANDOM
                    : (ai_strat == AI_TYPE_RANDOM)  ? AI_TYPE_DUMB
                                                    : AI_TYPE_GREEDY;
       } else if (selected == 4) {
@@ -829,6 +841,9 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         snprintf(strat_buf, sizeof(strat_buf), "Cheater-%s", lvl);
         snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
                  (unsigned)(i + 1), slots[i].name, strat_buf, elo);
+      } else if (slots[i].ai_type == AI_TYPE_ORACLE) {
+        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+                 (unsigned)(i + 1), slots[i].name, "Oracle-Solver", 1950);
       } else {
         const char *strat = (slots[i].ai_type == AI_TYPE_GREEDY)  ? "Greedy"
                           : (slots[i].ai_type == AI_TYPE_RANDOM)  ? "Random"
@@ -893,8 +908,12 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
       } else if (slots[cur].ai_type == AI_TYPE_CHEATER && (slots[cur].cheater_depth <= 4)) {
         slots[cur].cheater_depth = 6;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_Master_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_CHEATER) {
+        slots[cur].ai_type = AI_TYPE_ORACLE;
+        slots[cur].cheater_depth = 6;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Oracle_%u", (unsigned)(cur + 1));
       } else {
-        // From Cheater (Master): check if another human already exists
+        // From Oracle: check if another human already exists
         bool already_has_human = false;
         for (uint8_t j = 0; j < *nb_slots; j++) {
           if (j != cur && slots[j].is_human) {
@@ -1120,6 +1139,15 @@ static void tui_menu_tournament(void) {
             cfg.participants[i].eval_context = &cheater_cfgs[i];
             uint8_t d = slots[i].cheater_depth ? slots[i].cheater_depth : 4;
             cfg.participants[i].elo_start = (d <= 2) ? 1320 : (d <= 4 ? 1600 : 1790);
+          } else if (slots[i].ai_type == AI_TYPE_ORACLE) {
+            const char *dummy = NULL;
+            cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);
+            cheater_cfgs[i].max_depth = 6;
+            cheater_cfgs[i].solve_deal4 = true;
+            cheater_cfgs[i].multi_deal = true;
+            cheater_cfgs[i].ubp_model = UBP_NO_TABLIC;
+            cfg.participants[i].eval_context = &cheater_cfgs[i];
+            cfg.participants[i].elo_start = 1950;
           } else {
             const char *dummy = NULL;
             cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);

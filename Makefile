@@ -129,6 +129,12 @@ bench-cheater: build/bench_cheater
 build/bench_cheater: $(TOURN_OBJS_REL) tools/bench_cheater.c $(HDRS) | dirs
 	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o $@ $(TOURN_OBJS_REL) tools/bench_cheater.c -lm
 
+bench-solver: build/bench_solver
+	./build/bench_solver
+
+build/bench_solver: $(TOURN_OBJS_REL) tools/bench_solver.c $(HDRS) | dirs
+	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o $@ $(TOURN_OBJS_REL) tools/bench_solver.c -lm
+
 run-test: test
 run-test-bitboard: test-bitboard
 run-bench: bench

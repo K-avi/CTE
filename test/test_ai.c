@@ -331,6 +331,111 @@ int run_test_ai(void) {
     assert(cfg_master.nodes_visited >= cfg_normal.nodes_visited);
     assert(cfg_master.depth_reached == 6);
 
+    // ---- T38 : Validation pos_evaluate_exact (Score terminal mathématique exact) ----
+    s_cte_pos exact_pos;
+    memset(&exact_pos, 0, sizeof(exact_pos));
+    exact_pos.nb_players = 2;
+    exact_pos.card_points[0] = 14;
+    exact_pos.tablic_counts[0] = 1; // 14 + 2 = 16 pts
+    exact_pos.won_card_counts[0] = 28; // >= 27: +3 pts (300 units)
+    exact_pos.card_points[1] = 8;
+    exact_pos.tablic_counts[1] = 0; // 8 pts
+    exact_pos.won_card_counts[1] = 24;
+
+    int32_t ex_score_p0 = pos_evaluate_exact(&exact_pos, 0);
+    // Expected: (16 - 8) * 100 + 300 = +1100
+    assert(ex_score_p0 == 1100);
+    int32_t ex_score_p1 = pos_evaluate_exact(&exact_pos, 1);
+    // Expected: (8 - 16) * 100 - 300 = -1100
+    assert(ex_score_p1 == -1100);
+
+    // Tie majority test (26-26 cards)
+    exact_pos.won_card_counts[0] = 26;
+    exact_pos.won_card_counts[1] = 26;
+    assert(pos_evaluate_exact(&exact_pos, 0) == 800);
+
+    // ---- T39 : Validation Solveur Donne 4 & Recherche Multi-Donnes ----
+    s_cte_game game_deal4;
+    char *d4_names[2] = { "P0", "P1" };
+    err = init_game(&game_deal4, 2, d4_names, false);
+    assert(err == e_ok);
+    err = setup_round(&game_deal4);
+    assert(err == e_ok);
+
+    // Advance shoe to Deal 4 (cur_card = 40, deal 12 cards -> cur_card = 52)
+    game_deal4.deck.cur_card = 40;
+    err = deal_next_hand(&game_deal4);
+    assert(err == e_ok);
+    assert(game_deal4.deck.cur_card == 52);
+
+    s_cte_pos pos_d4 = pos_from_game(&game_deal4);
+    assert(pos_d4.deck != NULL);
+    assert(pos_d4.cur_card == 52);
+
+    struct s_cte_move_list d4_moves;
+    err = init_move_list(&d4_moves, 16);
+    assert(err == e_ok);
+    err = pos_gen_moves(&d4_moves, &pos_d4);
+    assert(err == e_ok);
+    assert(d4_moves.size > 0);
+
+    // Auto-solve Deal 4 to exact depth (12 plies)
+    s_cte_search_config cfg_d4_solve = {
+        .max_depth = 2, // base depth 2 will auto-expand to 12
+        .timeout_ms = 0,
+        .solve_deal4 = true,
+        .ubp_model = UBP_STRICT_ADMISSIBLE,
+    };
+    uint16_t best_d4 = search_best_move(&pos_d4, &d4_moves, &cfg_d4_solve);
+    assert(best_d4 < d4_moves.size);
+    assert(cfg_d4_solve.depth_reached == 12);
+    assert(cfg_d4_solve.nodes_visited > 0);
+
+    // Test Multi-Deal lookahead from Deal 3 across deal boundary
+    s_cte_game game_d3;
+    char *d3_names[2] = { "P0", "P1" };
+    err = init_game(&game_d3, 2, d3_names, false);
+    assert(err == e_ok);
+    err = setup_round(&game_d3);
+    assert(err == e_ok);
+
+    // Deal 3 starts at cur_card = 28 -> deal to cur_card = 40
+    game_d3.deck.cur_card = 28;
+    err = deal_next_hand(&game_d3);
+    assert(err == e_ok);
+    assert(game_d3.deck.cur_card == 40);
+
+    s_cte_pos pos_d3 = pos_from_game(&game_d3);
+    // Hands with 2 cards for P0 and 1 for P1 to test multi-deal transition with >= 2 moves
+    pos_d3.hand_counts[0] = 2;
+    pos_d3.hand_bb[0] = (1ULL << game_d3.deck.cards[28]) | (1ULL << game_d3.deck.cards[29]);
+    pos_d3.hand_counts[1] = 1;
+    pos_d3.hand_bb[1] = (1ULL << game_d3.deck.cards[34]);
+
+    struct s_cte_move_list d3_moves;
+    err = init_move_list(&d3_moves, 8);
+    assert(err == e_ok);
+    err = pos_gen_moves(&d3_moves, &pos_d3);
+    assert(err == e_ok);
+    assert(d3_moves.size >= 2);
+
+    // Search with depth 4 and multi_deal = true: will cross from Deal 3 into Deal 4!
+    s_cte_search_config cfg_cross_deal = {
+        .max_depth = 4,
+        .timeout_ms = 0,
+        .multi_deal = true,
+        .ubp_model = UBP_STRICT_ADMISSIBLE,
+    };
+    uint16_t best_cross = search_best_move(&pos_d3, &d3_moves, &cfg_cross_deal);
+    assert(best_cross < d3_moves.size);
+    assert(cfg_cross_deal.depth_reached == 4);
+
+    free_move_list(&d3_moves);
+    free_game(&game_d3);
+
+    free_move_list(&d4_moves);
+    free_game(&game_deal4);
+
     free_move_list(&test_moves);
     free_game(&game_diff);
 

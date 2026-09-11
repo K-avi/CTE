@@ -16,6 +16,7 @@ typedef enum {
     AI_TYPE_DUMB    = 1,
     AI_TYPE_GREEDY  = 2,
     AI_TYPE_CHEATER = 3,
+    AI_TYPE_ORACLE  = 4,
 } e_cte_ai_type;
 
 // Backward-compatibility alias
@@ -67,6 +68,10 @@ uint16_t eval_cheater(const s_cte_game_state *state,
                       const struct s_cte_move_list *moves,
                       void *ctx);
 
+uint16_t eval_oracle(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx);
+
 // Resolve evaluator function and optional display name from AI type
 t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out);
 
@@ -76,6 +81,7 @@ static inline int16_t cte_default_ai_elo(e_cte_ai_type type){
         case AI_TYPE_RANDOM:  return 300;
         case AI_TYPE_GREEDY:  return 1000;
         case AI_TYPE_CHEATER: return 1150;
+        case AI_TYPE_ORACLE:  return 1950;
         default:              return 1000;
     }
 }

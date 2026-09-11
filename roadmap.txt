@@ -41,13 +41,13 @@ Steps & Roadmap :
         - [x] Alpha-Beta pruning search (search_best_move)
         - [x] Cheater / Oracle lookahead evaluator (eval_cheater)
    [ ] Advanced Search & Optimization (Mono-deal engine):
-        - [ ] Lightweight register-only move ordering (heuristic move sort without heap alloc)
+        - [x] Lightweight register-only move ordering (heuristic move sort without heap alloc)
         - [ ] Selective endgame quiescence extension (d + 2..4 plies when hand <= 2)
         - [ ] Principal Variation (PV) caching & root turn reuse
    [ ] Deep Omniscient Cheater & Multi-Deal Solver (Oracle Track):
-        - [ ] Deck-aware state representation: track remaining shoe sequence from s_cte_game_state->deck
-        - [ ] Cross-deal lookahead (d = 14..18): anticipate opponent's upcoming cards across deal boundaries
-        - [ ] Deal 4 exact endgame resolution (last 12 cards, 0 in deck, 100% optimal minimax without heuristics)
+        - [x] Deck-aware state representation: track remaining shoe sequence from s_cte_game_state->deck
+        - [x] Cross-deal lookahead (d = 14..18): anticipate opponent's upcoming cards across deal boundaries
+        - [x] Deal 4 exact endgame resolution (last 12 cards, 0 in deck, 100% optimal minimax without heuristics)
         - [ ] 24-ply deep minimax solver for Deals 3 + 4 with specialized Transposition Table
         - [ ] Full-round 48-ply resolution research (theoretical benchmark ceiling for perfect Tablić play)
    [ ] Imperfect Information & Fair AI (Fair Track):

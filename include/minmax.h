@@ -6,18 +6,20 @@
 #include "move.h"
 #include "eval.h"
 
-// Compact game snapshot (fits in a 64-byte L1 cache line: exactly 60 bytes)
+// Compact game snapshot (fits in 72 bytes: 1 cache line pair)
 typedef struct {
-    uint64_t table_bb;          // 52-bit mask of cards on the table
-    uint64_t hand_bb[4];        // 52-bit mask of cards in each player's hand
-    uint8_t  hand_counts[4];    // Number of cards in each player's hand
-    uint8_t  won_card_counts[4];// Number of won cards per player
-    uint8_t  card_points[4];    // Cumulative card points per player
-    uint8_t  tablic_counts[4];  // Cumulative tablic count per player
-    uint8_t  current_player;    // Active player (0..nb_players-1)
-    int8_t   last_captor;       // Last capturing player (-1 if none)
-    uint8_t  nb_players;        // 2, 3, or 4
-    bool     is_team_mode;      // True for 4-player 2v2 team mode
+    uint64_t     table_bb;           // 52-bit mask of cards on the table
+    uint64_t     hand_bb[4];         // 52-bit mask of cards in each player's hand
+    const t_card *deck;              // Pointer to 52-card shoe (NULL if mono-deal / unknown)
+    uint8_t      cur_card;           // Current shoe offset (0..52)
+    uint8_t      hand_counts[4];     // Number of cards in each player's hand
+    uint8_t      won_card_counts[4]; // Number of won cards per player
+    uint8_t      card_points[4];     // Cumulative card points per player
+    uint8_t      tablic_counts[4];   // Cumulative tablic count per player
+    uint8_t      current_player;     // Active player (0..nb_players-1)
+    int8_t       last_captor;        // Last capturing player (-1 if none)
+    uint8_t      nb_players;         // 2, 3, or 4
+    bool         is_team_mode;       // True for 4-player 2v2 team mode
 } s_cte_pos;
 
 #define CTE_MAX_ROOT_CANDIDATES 256
@@ -44,6 +46,8 @@ typedef struct {
     uint8_t         max_depth;         // Search depth in plies (e.g. 2 for 1 turn lookahead, 4, 6...)
     uint32_t        timeout_ms;        // Max time in ms for iterative deepening (0 = fixed depth)
     e_cte_ubp_model ubp_model;         // Upper Bound Pruning model to use
+    bool            multi_deal;        // Enable cross-deal lookahead across shoe sequence
+    bool            solve_deal4;       // Auto-solve Deal 4 to exact terminal depth (up to 12 plies)
     int32_t       (*eval_fn)(const s_cte_pos*, uint8_t); // Custom eval function (NULL = pos_evaluate)
     uint64_t        nodes_visited;     // Total search tree nodes visited
     uint64_t        ubp_cutoffs;       // Number of branches pruned by UBP
@@ -69,6 +73,9 @@ int32_t compute_lower_bound(const s_cte_pos *pos, uint8_t root_player, uint8_t d
 
 // Static evaluation function (from perspective of root_player)
 int32_t pos_evaluate(const s_cte_pos *pos, uint8_t root_player);
+
+// Exact terminal evaluation function (from perspective of root_player) when all 52 cards are played
+int32_t pos_evaluate_exact(const s_cte_pos *pos, uint8_t root_player);
 
 // Frozen baseline evaluation (pre-optimization) for A/B benchmarking
 int32_t pos_evaluate_v0(const s_cte_pos *pos, uint8_t root_player);

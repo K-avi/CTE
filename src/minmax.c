@@ -22,6 +22,11 @@ s_cte_pos pos_from_state(const s_cte_game_state *state){
     res.last_captor = -1;
     res.is_team_mode = state->is_team_mode && (res.nb_players == 4);
 
+    if(state->deck){
+        res.deck = state->deck->cards;
+        res.cur_card = state->deck->cur_card;
+    }
+
     if(state->players){
         for(uint8_t p = 0; p < res.nb_players; p++){
             const struct s_cte_player_data *pl = &state->players->players[p];
@@ -319,6 +324,50 @@ int32_t pos_evaluate_v0(const s_cte_pos *pos, uint8_t root_player){
     }
 }
 
+// Exact game-theoretic terminal evaluation when all 52 cards are exhausted (round complete).
+// Strictly implements official Tablic rules without heuristic tie-breaker terms.
+int32_t pos_evaluate_exact(const s_cte_pos *pos, uint8_t root_player){
+    if(!pos) return 0;
+    uint8_t p = root_player % pos->nb_players;
+
+    if(pos->is_team_mode && pos->nb_players == 4){
+        uint8_t my_team = (uint8_t)(p % 2);
+        uint8_t opp_team = (uint8_t)(1 - my_team);
+
+        int32_t my_pts = (pos->card_points[my_team] + pos->card_points[my_team + 2])
+                       + 2 * (pos->tablic_counts[my_team] + pos->tablic_counts[my_team + 2]);
+        int32_t opp_pts = (pos->card_points[opp_team] + pos->card_points[opp_team + 2])
+                        + 2 * (pos->tablic_counts[opp_team] + pos->tablic_counts[opp_team + 2]);
+
+        int32_t my_cards = pos->won_card_counts[my_team] + pos->won_card_counts[my_team + 2];
+        int32_t opp_cards = pos->won_card_counts[opp_team] + pos->won_card_counts[opp_team + 2];
+
+        int32_t maj = 0;
+        if(my_cards >= 27) maj = +300;
+        else if(opp_cards >= 27) maj = -300;
+
+        return (my_pts - opp_pts) * 100 + maj;
+    } else {
+        int32_t my_pts = pos->card_points[p] + 2 * pos->tablic_counts[p];
+        int32_t my_cards = pos->won_card_counts[p];
+
+        int32_t max_opp_pts = 0;
+        int32_t max_opp_cards = 0;
+        for(uint8_t i = 0; i < pos->nb_players; i++){
+            if(i == p) continue;
+            int32_t o_pts = pos->card_points[i] + 2 * pos->tablic_counts[i];
+            if(o_pts > max_opp_pts) max_opp_pts = o_pts;
+            if(pos->won_card_counts[i] > max_opp_cards) max_opp_cards = pos->won_card_counts[i];
+        }
+
+        int32_t maj = 0;
+        if(my_cards >= 27) maj = +300;
+        else if(max_opp_cards >= 27) maj = -300;
+
+        return (my_pts - max_opp_pts) * 100 + maj;
+    }
+}
+
 static inline bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t root_player){
     if(player_id == root_player) return true;
     if(pos->is_team_mode && pos->nb_players == 4){
@@ -327,15 +376,18 @@ static inline bool is_friendly(const s_cte_pos *pos, uint8_t player_id, uint8_t 
     return false;
 }
 
-static inline int16_t score_compact_move(const s_cte_bitboard_move *m, uint64_t table_bb){
+static inline int16_t score_compact_move(const s_cte_bitboard_move *m, const s_cte_pos *pos){
+    uint64_t table_bb = pos->table_bb;
     if(m->capture_mask == 0){
         // Drop move: penalize dropping valuable cards
         return (int16_t)(-(get_points(m->card_played) * 100));
     }
+
     int16_t score = 0;
     if(table_bb > 0 && m->capture_mask == table_bb){
         score += 10000; // Immediate Tablic bonus
     }
+
     uint8_t pts = get_points(m->card_played);
     uint64_t temp = m->capture_mask;
     uint8_t count = 0;
@@ -345,17 +397,19 @@ static inline int16_t score_compact_move(const s_cte_bitboard_move *m, uint64_t 
         count++;
         temp &= (temp - 1);
     }
+    // Points captured (heavily prioritized) + card count bonus
     score += (int16_t)(pts * 100 + count * 10);
     return score;
 }
 
-static inline void order_compact_moves(s_cte_bitboard_move_list *cpt, uint64_t table_bb){
+static inline void order_compact_moves(s_cte_bitboard_move_list *cpt, const s_cte_pos *pos){
     if(cpt->size <= 1) return;
-    int16_t scores[1024];
-    for(uint16_t i = 0; i < cpt->size; i++){
-        scores[i] = score_compact_move(&cpt->moves[i], table_bb);
+    int16_t scores[128];
+    uint16_t count = cpt->size < 128 ? cpt->size : 128;
+    for(uint16_t i = 0; i < count; i++){
+        scores[i] = score_compact_move(&cpt->moves[i], pos);
     }
-    for(uint16_t i = 1; i < cpt->size; i++){
+    for(uint16_t i = 1; i < count; i++){
         s_cte_bitboard_move key_m = cpt->moves[i];
         int16_t key_s = scores[i];
         int j = (int)i - 1;
@@ -546,14 +600,10 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
                                e_cte_ubp_model ubp_model,
                                uint64_t *node_counter,
                                uint64_t *ubp_cutoff_counter,
-                               t_eval_fn eval_fn)
+                               t_eval_fn eval_fn,
+                               bool multi_deal)
 {
     if(node_counter) (*node_counter)++;
-
-    if(depth == 0){
-        if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(pos, root_player);
-        return eval_fn(pos, root_player);
-    }
 
     bool all_empty = true;
     for(uint8_t i = 0; i < pos->nb_players; i++){
@@ -563,9 +613,26 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         }
     }
     if(all_empty){
-        // Endgame terminal: award remaining table cards to last captor
-        if(pos->table_bb > 0 && pos->last_captor >= 0 && pos->last_captor < pos->nb_players){
-            s_cte_pos terminal = *pos;
+        // 1. Cross-deal lookahead: if cards remain in the shoe and multi_deal is active
+        if(multi_deal && pos->deck != NULL && pos->cur_card + 12 <= 52 && depth > 0){
+            s_cte_pos next_deal = *pos;
+            uint8_t cards_per_p = (uint8_t)(12 / pos->nb_players);
+            for(uint8_t p = 0; p < pos->nb_players; p++){
+                next_deal.hand_bb[p] = 0;
+                for(uint8_t c = 0; c < cards_per_p; c++){
+                    t_card card = pos->deck[next_deal.cur_card + p * cards_per_p + c];
+                    if(card < 52) next_deal.hand_bb[p] |= (1ULL << card);
+                }
+                next_deal.hand_counts[p] = cards_per_p;
+            }
+            next_deal.cur_card += 12;
+            // Table cards and last_captor are preserved across deals
+            return alphabeta_search(&next_deal, depth, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn, multi_deal);
+        }
+
+        // 2. Terminal resolution: award remaining table cards to last captor
+        s_cte_pos terminal = *pos;
+        if(terminal.table_bb > 0 && terminal.last_captor >= 0 && terminal.last_captor < terminal.nb_players){
             uint8_t captor = (uint8_t)terminal.last_captor;
             uint64_t temp = terminal.table_bb;
             uint8_t extra_pts = 0;
@@ -579,9 +646,18 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
             terminal.card_points[captor] += extra_pts;
             terminal.won_card_counts[captor] += extra_cards;
             terminal.table_bb = 0;
-            if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(&terminal, root_player);
-            return eval_fn(&terminal, root_player);
         }
+
+        // Exact game-theoretic scoring at true round completion
+        if((!eval_fn || eval_fn == pos_evaluate) && pos->deck != NULL && pos->cur_card >= 52){
+            return pos_evaluate_exact(&terminal, root_player);
+        }
+
+        if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(&terminal, root_player);
+        return eval_fn(&terminal, root_player);
+    }
+
+    if(depth == 0){
         if(!eval_fn || eval_fn == pos_evaluate) return pos_evaluate(pos, root_player);
         return eval_fn(pos, root_player);
     }
@@ -589,7 +665,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     if(pos->hand_counts[pos->current_player] == 0){
         s_cte_pos next_pos = *pos;
         next_pos.current_player = (uint8_t)((pos->current_player + 1) % pos->nb_players);
-        return alphabeta_search(&next_pos, depth, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
+        return alphabeta_search(&next_pos, depth, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn, multi_deal);
     }
 
     bool maximizing = is_friendly(pos, pos->current_player, root_player);
@@ -625,13 +701,13 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
     }
 
     // Move ordering: evaluate tactical captures before drops
-    order_compact_moves(&cpt, pos->table_bb);
+    order_compact_moves(&cpt, pos);
 
     if(maximizing){
         int32_t max_eval = -INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn, multi_deal);
             if(eval > max_eval) max_eval = eval;
             if(eval > alpha) alpha = eval;
             if(beta <= alpha) break; // Beta cutoff
@@ -641,7 +717,7 @@ static int32_t alphabeta_search(const s_cte_pos *pos,
         int32_t min_eval = +INF_SCORE;
         for(uint16_t i = 0; i < cpt.size; i++){
             s_cte_pos next_pos = pos_apply_bitboard_move(pos, cpt.moves[i].card_played, cpt.moves[i].capture_mask);
-            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
+            int32_t eval = alphabeta_search(&next_pos, depth - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn, multi_deal);
             if(eval < min_eval) min_eval = eval;
             if(eval < beta) beta = eval;
             if(beta <= alpha) break; // Alpha cutoff
@@ -699,8 +775,23 @@ uint16_t search_best_move(const s_cte_pos *pos,
     uint32_t timeout_ms = config ? config->timeout_ms : 0;
     uint8_t root_player = pos->current_player;
     e_cte_ubp_model ubp_model = config ? config->ubp_model : UBP_STRICT_ADMISSIBLE;
+    bool multi_deal = config ? config->multi_deal : false;
+    bool solve_deal4 = config ? config->solve_deal4 : false;
     uint64_t *node_counter = (config != NULL) ? &config->nodes_visited : NULL;
     uint64_t *ubp_cutoff_counter = (config != NULL) ? &config->ubp_cutoffs : NULL;
+
+    // Deal 4 Exact Endgame Resolution:
+    // If Deal 4 is active (cur_card >= 40) and solve_deal4 is set, auto-expand target_depth
+    // to the exact number of remaining plies (up to 12) to solve the round mathematically!
+    if(solve_deal4 && pos->deck != NULL && pos->cur_card >= 40){
+        uint8_t rem_plies = 0;
+        for(uint8_t p = 0; p < pos->nb_players; p++){
+            rem_plies += pos->hand_counts[p];
+        }
+        if(rem_plies > target_depth && rem_plies <= 12){
+            target_depth = rem_plies;
+        }
+    }
 
     uint16_t num_candidates = moves->size < CTE_MAX_ROOT_CANDIDATES ? moves->size : CTE_MAX_ROOT_CANDIDATES;
     s_cte_root_candidate cands[CTE_MAX_ROOT_CANDIDATES];
@@ -764,7 +855,7 @@ uint16_t search_best_move(const s_cte_pos *pos,
 
             uint64_t nodes_before = node_counter ? *node_counter : 0;
             t_eval_fn eval_fn = (config && config->eval_fn) ? config->eval_fn : pos_evaluate;
-            int32_t score = alphabeta_search(&next_pos, d - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn);
+            int32_t score = alphabeta_search(&next_pos, d - 1, alpha, beta, root_player, ubp_model, node_counter, ubp_cutoff_counter, eval_fn, multi_deal);
             uint64_t nodes_after = node_counter ? *node_counter : 0;
             if(node_counter) cands[i].nodes_spent += (nodes_after - nodes_before);
 
