@@ -39,10 +39,29 @@ typedef struct {
     uint8_t  bracket_stage; // Stage/round index in tournament
 } s_cte_tournament_match;
 
+#define CTE_MAX_TOURNAMENT_TEAMS (CTE_MAX_TOURNAMENT_PLAYERS / 2)
+
+// Team record in 2v2 tournament
+typedef struct {
+    char          name[48];       // Display name, e.g. "Team 1 (P1 & P2)"
+    uint8_t       p1_idx;         // Index of 1st teammate in participants[]
+    uint8_t       p2_idx;         // Index of 2nd teammate in participants[]
+    uint16_t      matches_played;
+    uint16_t      matches_won;
+    uint16_t      matches_lost;
+    uint16_t      matches_tied;
+    uint32_t      total_points;
+    uint16_t      total_tablics;
+    int16_t       elo_start;      // Average starting Elo: (elo_p1 + elo_p2) / 2
+    int16_t       elo_current;    // Average current Elo
+} s_cte_tournament_team;
+
 // Configuration for tournament launch
 typedef struct {
     e_cte_tournament_type        type;
-    uint8_t                      nb_participants;
+    bool                         is_team_mode;    // True for 2v2 team tournament
+    uint8_t                      nb_participants; // In 1v1: nb players. In 2v2: total players (2 * nb_teams)
+    uint8_t                      nb_teams;        // In 2v2: number of teams (2 to 8)
     s_cte_tournament_participant participants[CTE_MAX_TOURNAMENT_PLAYERS];
     uint16_t                     winning_score; // Match target points (e.g. 51 or 101)
     uint8_t                      max_rounds;    // Max deck cycles per match (0 = until winning_score)
@@ -61,6 +80,10 @@ typedef struct {
     uint16_t                nb_matches;
     uint8_t                 standings[CTE_MAX_TOURNAMENT_PLAYERS]; // Sorted indices (1st to last)
     int8_t                  champion_idx;                          // Index of winner, -1 if ongoing/tie
+    s_cte_tournament_team   teams[CTE_MAX_TOURNAMENT_TEAMS];       // Teams in 2v2 mode
+    uint8_t                 nb_teams;                              // Number of active teams in 2v2
+    uint8_t                 team_standings[CTE_MAX_TOURNAMENT_TEAMS]; // Sorted team indices (1st to last)
+    int8_t                  champion_team_idx;                     // Index of winning team, -1 if ongoing/tie
 } s_cte_tournament;
 
 // Statistical benchmark between two AIs

@@ -847,9 +847,14 @@ static void tui_menu_quick_match(void) {
   }
 }
 
-static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slots) {
+static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slots, bool is_team_mode) {
   int cur = 0;
   char notice[64] = {0};
+
+  if (is_team_mode) {
+    if (*nb_slots < 4) *nb_slots = 4;
+    if ((*nb_slots % 2) != 0 && *nb_slots < TUI_MAX_PARTICIPANTS) (*nb_slots)++;
+  }
 
   for (;;) {
     erase();
@@ -867,41 +872,51 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
     int inner_w = (box_w > 8) ? box_w - 6 : 70;
 
     char title[64];
-    snprintf(title, sizeof(title), "TOURNAMENT PARTICIPANTS (%u / %u max)",
-             (unsigned)*nb_slots, TUI_MAX_PARTICIPANTS);
+    if (is_team_mode) {
+      snprintf(title, sizeof(title), "2v2 TOURNAMENT ROSTER (%u Teams, %u Players)",
+               (unsigned)(*nb_slots / 2), (unsigned)*nb_slots);
+    } else {
+      snprintf(title, sizeof(title), "TOURNAMENT PARTICIPANTS (%u / %u max)",
+               (unsigned)*nb_slots, TUI_MAX_PARTICIPANTS);
+    }
     tui_draw_box(start_y, start_x, box_h, box_w, title);
 
     for (uint8_t i = 0; i < *nb_slots; i++) {
       int row_y = start_y + 2 + i;
       char line_buf[96];
+      char team_tag[12] = "";
+      if (is_team_mode) {
+        snprintf(team_tag, sizeof(team_tag), "[T%u] ", (unsigned)(i / 2 + 1));
+      }
+
       if (slots[i].is_human) {
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [Human]  : %-18.18s (Human Player)",
-                 (unsigned)(i + 1), slots[i].name);
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [Human]  : %-16.16s (Human Player)",
+                 team_tag, (unsigned)(i + 1), slots[i].name);
       } else if (slots[i].ai_type == AI_TYPE_CHEATER) {
         uint8_t d = slots[i].cheater_depth ? slots[i].cheater_depth : 4;
         const char *lvl = (d <= 2) ? "Easy" : (d <= 4 ? "Normal" : "Master");
         int elo = (d <= 2) ? 1320 : (d <= 4 ? 1600 : 1790);
         char strat_buf[32];
         snprintf(strat_buf, sizeof(strat_buf), "Cheater-%s", lvl);
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
-                 (unsigned)(i + 1), slots[i].name, strat_buf, elo);
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [AI]     : %-16.16s [%-13s] (Elo: %4d)",
+                 team_tag, (unsigned)(i + 1), slots[i].name, strat_buf, elo);
       } else if (slots[i].ai_type == AI_TYPE_ORACLE) {
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
-                 (unsigned)(i + 1), slots[i].name, "Oracle-Solver", 1950);
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [AI]     : %-16.16s [%-13s] (Elo: %4d)",
+                 team_tag, (unsigned)(i + 1), slots[i].name, "Oracle-Solver", 1950);
       } else if (slots[i].ai_type == AI_TYPE_FAIR) {
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
-                 (unsigned)(i + 1), slots[i].name, "Fair (PIMC)",
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [AI]     : %-16.16s [%-13s] (Elo: %4d)",
+                 team_tag, (unsigned)(i + 1), slots[i].name, "Fair (PIMC)",
                  (int)cte_default_ai_elo(AI_TYPE_FAIR));
       } else if (slots[i].ai_type == AI_TYPE_ISMCTS) {
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
-                 (unsigned)(i + 1), slots[i].name, "ISMCTS",
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [AI]     : %-16.16s [%-13s] (Elo: %4d)",
+                 team_tag, (unsigned)(i + 1), slots[i].name, "ISMCTS",
                  (int)cte_default_ai_elo(AI_TYPE_ISMCTS));
       } else {
         const char *strat = (slots[i].ai_type == AI_TYPE_GREEDY)  ? "Greedy"
                           : (slots[i].ai_type == AI_TYPE_RANDOM)  ? "Random"
                                                                   : "Dumb";
-        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
-                 (unsigned)(i + 1), slots[i].name, strat,
+        snprintf(line_buf, sizeof(line_buf), "%s#%-2u [AI]     : %-16.16s [%-13s] (Elo: %4d)",
+                 team_tag, (unsigned)(i + 1), slots[i].name, strat,
                  (int)cte_default_ai_elo(slots[i].ai_type));
       }
 
@@ -1009,27 +1024,63 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         snprintf(slots[cur].name, sizeof(slots[cur].name), "%.31s", new_name);
       }
     } else if (ch == 'a' || ch == 'A') {
-      if (*nb_slots < TUI_MAX_PARTICIPANTS) {
-        slots[*nb_slots].is_human = false;
-        slots[*nb_slots].ai_type = AI_TYPE_GREEDY;
-        slots[*nb_slots].cheater_depth = 0;
-        snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Greedy_%u", (unsigned)(*nb_slots + 1));
-        (*nb_slots)++;
-        cur = *nb_slots - 1;
+      if (is_team_mode) {
+        if (*nb_slots + 2 <= TUI_MAX_PARTICIPANTS) {
+          slots[*nb_slots].is_human = false;
+          slots[*nb_slots].ai_type = AI_TYPE_GREEDY;
+          slots[*nb_slots].cheater_depth = 0;
+          snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Greedy_%u", (unsigned)(*nb_slots + 1));
+          (*nb_slots)++;
+
+          slots[*nb_slots].is_human = false;
+          slots[*nb_slots].ai_type = AI_TYPE_RANDOM;
+          slots[*nb_slots].cheater_depth = 0;
+          snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Random_%u", (unsigned)(*nb_slots + 1));
+          (*nb_slots)++;
+          cur = *nb_slots - 2;
+        } else {
+          snprintf(notice, sizeof(notice), "Maximum participants reached (%u).", TUI_MAX_PARTICIPANTS);
+        }
       } else {
-        snprintf(notice, sizeof(notice), "Maximum participants reached (%u).", TUI_MAX_PARTICIPANTS);
+        if (*nb_slots < TUI_MAX_PARTICIPANTS) {
+          slots[*nb_slots].is_human = false;
+          slots[*nb_slots].ai_type = AI_TYPE_GREEDY;
+          slots[*nb_slots].cheater_depth = 0;
+          snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Greedy_%u", (unsigned)(*nb_slots + 1));
+          (*nb_slots)++;
+          cur = *nb_slots - 1;
+        } else {
+          snprintf(notice, sizeof(notice), "Maximum participants reached (%u).", TUI_MAX_PARTICIPANTS);
+        }
       }
     } else if (ch == 'd' || ch == 'D') {
-      if (*nb_slots > 2) {
-        for (uint8_t j = cur; j < *nb_slots - 1; j++) {
-          slots[j] = slots[j + 1];
+      if (is_team_mode) {
+        if (*nb_slots > 4) {
+          uint8_t team_idx = (uint8_t)(cur / 2);
+          uint8_t start_del = (uint8_t)(team_idx * 2);
+          for (uint8_t j = start_del; j + 2 < *nb_slots; j++) {
+            slots[j] = slots[j + 2];
+          }
+          *nb_slots -= 2;
+          if (cur >= *nb_slots) cur = *nb_slots - 1;
+        } else {
+          snprintf(notice, sizeof(notice), "2v2 Tournament requires at least 2 teams (4 players).");
         }
-        (*nb_slots)--;
-        if (cur >= *nb_slots) cur = *nb_slots - 1;
       } else {
-        snprintf(notice, sizeof(notice), "Tournament requires at least 2 participants.");
+        if (*nb_slots > 2) {
+          for (uint8_t j = cur; j < *nb_slots - 1; j++) {
+            slots[j] = slots[j + 1];
+          }
+          (*nb_slots)--;
+          if (cur >= *nb_slots) cur = *nb_slots - 1;
+        } else {
+          snprintf(notice, sizeof(notice), "Tournament requires at least 2 participants.");
+        }
       }
     } else if (ch == 'q' || ch == 'Q' || ch == 27) {
+      if (is_team_mode && (*nb_slots % 2 != 0)) {
+        (*nb_slots)--;
+      }
       return;
     }
   }
@@ -1037,6 +1088,7 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
 
 static void tui_menu_tournament(void) {
   e_cte_tournament_type type = TOURNAMENT_ROUND_ROBIN;
+  bool is_team_mode = false;
   s_tui_participant_slot slots[TUI_MAX_PARTICIPANTS] = {
       { false, AI_TYPE_FAIR,    0, "Bot_Fair"    },
       { false, AI_TYPE_CHEATER, 4, "Bot_Cheater" },
@@ -1048,7 +1100,7 @@ static void tui_menu_tournament(void) {
   bool persist_ai = false;
 
   int selected = 0;
-  const int total_items = 6;
+  const int total_items = 7;
 
   for (;;) {
     erase();
@@ -1056,32 +1108,55 @@ static void tui_menu_tournament(void) {
     getmaxyx(stdscr, max_y, max_x);
 
     int box_w = (max_x >= 86) ? 80 : ((max_x > 4) ? max_x - 2 : 74);
-    int box_h = 18;
+    int box_h = 20;
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
     int start_y = (max_y > box_h) ? (max_y - box_h) / 2 : 2;
     int inner_w = (box_w > 8) ? box_w - 6 : 68;
 
     tui_draw_box(start_y, start_x, box_h, box_w, "TOURNAMENT ARENA");
 
-    bool ko_invalid = (type == TOURNAMENT_KNOCKOUT && (nb_slots & (nb_slots - 1)) != 0);
+    uint8_t nb_teams = (uint8_t)(nb_slots / 2);
+    bool ko_invalid = false;
+    char ko_warn[80] = {0};
+    if (is_team_mode) {
+      if ((nb_slots % 2) != 0 || nb_slots < 4) {
+        ko_invalid = true;
+        snprintf(ko_warn, sizeof(ko_warn), " (!) 2v2 requires even participants (min 4 players / 2 teams)");
+      } else if (type == TOURNAMENT_KNOCKOUT && (nb_teams & (nb_teams - 1)) != 0) {
+        ko_invalid = true;
+        snprintf(ko_warn, sizeof(ko_warn), " (!) Knockout 2v2 requires power-of-2 teams (2, 4, 8 teams)");
+      }
+    } else {
+      if (type == TOURNAMENT_KNOCKOUT && (nb_slots & (nb_slots - 1)) != 0) {
+        ko_invalid = true;
+        snprintf(ko_warn, sizeof(ko_warn), " (!) Knockout requires power-of-2 participants (2, 4, 8, 16)");
+      }
+    }
 
-    char items[6][64];
-    snprintf(items[0], sizeof(items[0]), "1. Format            : < %s >",
+    char items[7][64];
+    snprintf(items[0], sizeof(items[0]), "1. Mode              : < %s >",
+             is_team_mode ? "2v2 Teams" : "1v1 Solo");
+    snprintf(items[1], sizeof(items[1]), "2. Format            : < %s >",
              (type == TOURNAMENT_ROUND_ROBIN) ? "Round Robin (Championship)"
                                               : "Knockout Cup (Elimination)");
-    snprintf(items[1], sizeof(items[1]),
-             "2. Participants      : < %u configured >   [Enter to edit]%s",
-             (unsigned)nb_slots,
-             ko_invalid ? " (!)" : "");
-    snprintf(items[2], sizeof(items[2]), "3. Match Target      : < %u points >",
+    if (is_team_mode) {
+      snprintf(items[2], sizeof(items[2]),
+               "3. Roster (Teams)    : < %u teams (%u players) >  [Edit]%s",
+               (unsigned)nb_teams, (unsigned)nb_slots, ko_invalid ? " (!)" : "");
+    } else {
+      snprintf(items[2], sizeof(items[2]),
+               "3. Participants      : < %u configured >   [Enter to edit]%s",
+               (unsigned)nb_slots, ko_invalid ? " (!)" : "");
+    }
+    snprintf(items[3], sizeof(items[3]), "4. Match Target      : < %u points >",
              (unsigned)win_score);
-    snprintf(items[3], sizeof(items[3]), "4. Persist AI Stats  : < %s >",
+    snprintf(items[4], sizeof(items[4]), "5. Persist AI Stats  : < %s >",
              persist_ai ? "YES (saved to leaderboard)" : "NO (transient bots)");
-    snprintf(items[4], sizeof(items[4]), "[ LAUNCH TOURNAMENT ]");
-    snprintf(items[5], sizeof(items[5]), "[ Back to Main Menu ]");
+    snprintf(items[5], sizeof(items[5]), "[ LAUNCH TOURNAMENT ]");
+    snprintf(items[6], sizeof(items[6]), "[ Back to Main Menu ]");
 
     for (int i = 0; i < total_items; i++) {
-      int row_y = start_y + 3 + (i >= 4 ? i + 1 : i);
+      int row_y = start_y + 3 + (i >= 5 ? i + 1 : i);
       if (i == selected) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
         mvprintw(row_y, start_x + 3, " ->  %-*s", inner_w - 5, items[i]);
@@ -1091,10 +1166,9 @@ static void tui_menu_tournament(void) {
       }
     }
 
-    if (ko_invalid) {
+    if (ko_invalid && ko_warn[0]) {
       attron(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
-      mvprintw(start_y + 11, start_x + 3,
-               " (!) Knockout requires power-of-2 participants (2, 4, 8, 16)");
+      mvprintw(start_y + 13, start_x + 3, "%-*s", inner_w, ko_warn);
       attroff(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
     }
 
@@ -1114,30 +1188,42 @@ static void tui_menu_tournament(void) {
         selected++;
     } else if (ch == KEY_LEFT || ch == KEY_RIGHT || ch == ' ') {
       if (selected == 0) {
+        is_team_mode = !is_team_mode;
+        if (is_team_mode) {
+          if (nb_slots < 4) nb_slots = 4;
+          if ((nb_slots % 2) != 0) nb_slots++;
+        }
+      } else if (selected == 1) {
         type = (type == TOURNAMENT_ROUND_ROBIN) ? TOURNAMENT_KNOCKOUT
                                                 : TOURNAMENT_ROUND_ROBIN;
-      } else if (selected == 1) {
-        tui_edit_participants(slots, &nb_slots);
       } else if (selected == 2) {
-        win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
+        tui_edit_participants(slots, &nb_slots, is_team_mode);
       } else if (selected == 3) {
+        win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
+      } else if (selected == 4) {
         persist_ai = !persist_ai;
       }
     } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
       if (selected == 0) {
+        is_team_mode = !is_team_mode;
+        if (is_team_mode) {
+          if (nb_slots < 4) nb_slots = 4;
+          if ((nb_slots % 2) != 0) nb_slots++;
+        }
+      } else if (selected == 1) {
         type = (type == TOURNAMENT_ROUND_ROBIN) ? TOURNAMENT_KNOCKOUT
                                                 : TOURNAMENT_ROUND_ROBIN;
-      } else if (selected == 1) {
-        tui_edit_participants(slots, &nb_slots);
       } else if (selected == 2) {
-        win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
+        tui_edit_participants(slots, &nb_slots, is_team_mode);
       } else if (selected == 3) {
-        persist_ai = !persist_ai;
+        win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
       } else if (selected == 4) {
-        if (type == TOURNAMENT_KNOCKOUT && (nb_slots & (nb_slots - 1)) != 0) {
+        persist_ai = !persist_ai;
+      } else if (selected == 5) {
+        if (ko_invalid) {
           erase();
-          mvprintw(3, 4, "Error: Knockout format requires power-of-2 participants (2, 4, 8, 16).");
-          mvprintw(4, 4, "Current participants: %u. Please edit participants or change format.", (unsigned)nb_slots);
+          mvprintw(3, 4, "Error: Invalid tournament configuration.");
+          mvprintw(4, 4, "%s", ko_warn);
           mvprintw(6, 4, "Press any key to return...");
           refresh();
           getch();
@@ -1146,6 +1232,7 @@ static void tui_menu_tournament(void) {
 
         s_tui_ui_ctx ui_ctx;
         memset(&ui_ctx, 0, sizeof(ui_ctx));
+        ui_ctx.is_team_mode = is_team_mode;
 
         s_cte_profile_db profile_db;
         bool has_profile_db = (init_profile_db(&profile_db, NULL) == e_ok);
@@ -1153,6 +1240,7 @@ static void tui_menu_tournament(void) {
         s_cte_tournament t;
         s_cte_tournament_config cfg = {
             .type            = type,
+            .is_team_mode    = is_team_mode,
             .nb_participants = nb_slots,
             .winning_score   = win_score,
             .max_rounds      = 0,
@@ -1233,51 +1321,90 @@ static void tui_menu_tournament(void) {
           erase();
           getmaxyx(stdscr, max_y, max_x);
           int max_avail_h = (max_y > 4) ? max_y - 2 : 10;
-          int res_h = 10 + nb_slots;
+          int res_count = is_team_mode ? t.nb_teams : t.config.nb_participants;
+          int res_h = 10 + res_count;
           if (res_h > max_avail_h) res_h = max_avail_h;
 
           int res_w = (max_x >= 90) ? 86 : (max_x >= 84 ? 84 : (max_x > 4 ? max_x - 2 : 80));
           int res_x = (max_x > res_w) ? (max_x - res_w) / 2 : 1;
           int pad_x = (res_w >= 86) ? 4 : 2;
-          tui_draw_box(1, res_x, res_h, res_w,
-                       (type == TOURNAMENT_ROUND_ROBIN)
-                           ? "ROUND ROBIN RESULTS"
-                           : "KNOCKOUT CUP RESULTS");
 
-          if (t.champion_idx >= 0 &&
-              t.champion_idx < t.config.nb_participants) {
-            attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-            mvprintw(3, res_x + 4, " >>> TOURNAMENT CHAMPION: %s <<< ",
-                     t.config.participants[t.champion_idx].name);
-            attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-          }
+          char box_title[64];
+          snprintf(box_title, sizeof(box_title), "%s%s RESULTS",
+                   (type == TOURNAMENT_ROUND_ROBIN) ? "ROUND ROBIN " : "KNOCKOUT CUP ",
+                   is_team_mode ? "2v2" : "");
+          tui_draw_box(1, res_x, res_h, res_w, box_title);
 
-          attron(A_BOLD);
-          mvprintw(5, res_x + pad_x,
-                   " Rank | Participant      | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
-          attroff(A_BOLD);
-          mvprintw(
-              6, res_x + pad_x,
-              "------|------------------|---------|---------|-------|-----|------|------|-----");
-
-          for (uint8_t r = 0; r < t.config.nb_participants; r++) {
-            if (7 + r >= res_h - 1) {
-              mvprintw(7 + r, res_x + pad_x, "... (%u more participants omitted) ...",
-                       (unsigned)(t.config.nb_participants - r));
-              break;
+          if (is_team_mode) {
+            if (t.champion_team_idx >= 0 && t.champion_team_idx < t.nb_teams) {
+              attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
+              mvprintw(3, res_x + 4, " >>> 2v2 CHAMPIONS: %s <<< ",
+                       t.teams[t.champion_team_idx].name);
+              attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
             }
-            uint8_t idx = t.standings[r];
-            const s_cte_tournament_participant *p = &t.config.participants[idx];
-            double wr =
-                (p->matches_played > 0)
-                    ? ((double)p->matches_won / p->matches_played) * 100.0
-                    : 0.0;
-            int16_t delta = p->elo_current - p->elo_start;
-            mvprintw(7 + r, res_x + pad_x,
-                     "  %2u  | %-16.16s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
-                     (unsigned)(r + 1), p->name, (int)p->elo_start,
-                     (int)p->elo_current, (int)delta, (unsigned)p->matches_won,
-                     (unsigned)p->matches_lost, (unsigned)p->total_points, wr);
+
+            attron(A_BOLD);
+            mvprintw(5, res_x + pad_x,
+                     " Rank | Team (Members)        | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
+            attroff(A_BOLD);
+            mvprintw(
+                6, res_x + pad_x,
+                "------|-----------------------|---------|---------|-------|-----|------|------|-----");
+
+            for (uint8_t r = 0; r < t.nb_teams; r++) {
+              if (7 + r >= res_h - 1) {
+                mvprintw(7 + r, res_x + pad_x, "... (%u more teams omitted) ...",
+                         (unsigned)(t.nb_teams - r));
+                break;
+              }
+              uint8_t idx = t.team_standings[r];
+              const s_cte_tournament_team *tm = &t.teams[idx];
+              double wr = (tm->matches_played > 0)
+                              ? ((double)tm->matches_won / tm->matches_played) * 100.0
+                              : 0.0;
+              int16_t delta = tm->elo_current - tm->elo_start;
+              mvprintw(7 + r, res_x + pad_x,
+                       "  %2u  | %-21.21s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
+                       (unsigned)(r + 1), tm->name, (int)tm->elo_start,
+                       (int)tm->elo_current, (int)delta, (unsigned)tm->matches_won,
+                       (unsigned)tm->matches_lost, (unsigned)tm->total_points, wr);
+            }
+          } else {
+            if (t.champion_idx >= 0 &&
+                t.champion_idx < t.config.nb_participants) {
+              attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
+              mvprintw(3, res_x + 4, " >>> TOURNAMENT CHAMPION: %s <<< ",
+                       t.config.participants[t.champion_idx].name);
+              attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
+            }
+
+            attron(A_BOLD);
+            mvprintw(5, res_x + pad_x,
+                     " Rank | Participant      | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
+            attroff(A_BOLD);
+            mvprintw(
+                6, res_x + pad_x,
+                "------|------------------|---------|---------|-------|-----|------|------|-----");
+
+            for (uint8_t r = 0; r < t.config.nb_participants; r++) {
+              if (7 + r >= res_h - 1) {
+                mvprintw(7 + r, res_x + pad_x, "... (%u more participants omitted) ...",
+                         (unsigned)(t.config.nb_participants - r));
+                break;
+              }
+              uint8_t idx = t.standings[r];
+              const s_cte_tournament_participant *p = &t.config.participants[idx];
+              double wr =
+                  (p->matches_played > 0)
+                      ? ((double)p->matches_won / p->matches_played) * 100.0
+                      : 0.0;
+              int16_t delta = p->elo_current - p->elo_start;
+              mvprintw(7 + r, res_x + pad_x,
+                       "  %2u  | %-16.16s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
+                       (unsigned)(r + 1), p->name, (int)p->elo_start,
+                       (int)p->elo_current, (int)delta, (unsigned)p->matches_won,
+                       (unsigned)p->matches_lost, (unsigned)p->total_points, wr);
+            }
           }
 
           attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
@@ -1289,7 +1416,7 @@ static void tui_menu_tournament(void) {
           getch();
           free_tournament(&t);
         }
-      } else if (selected == 5) {
+      } else if (selected == 6) {
         return;
       }
     } else if (ch == 'q' || ch == 'Q' || ch == 27) {

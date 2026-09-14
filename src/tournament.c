@@ -9,14 +9,29 @@
 
 t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg){
     if(!t || !cfg) return e_null;
-    if(cfg->nb_participants < 2 || cfg->nb_participants > CTE_MAX_TOURNAMENT_PLAYERS){
-        return e_inval_val;
-    }
 
-    if(cfg->type == TOURNAMENT_KNOCKOUT){
-        uint8_t n = cfg->nb_participants;
-        if((n & (n - 1)) != 0){
-            return e_inval_val; // Must be power of 2 (2, 4, 8, 16)
+    if(cfg->is_team_mode){
+        if((cfg->nb_participants % 2) != 0){
+            return e_inval_val; // 2v2 requires even participant count
+        }
+        if(cfg->nb_participants < 4 || cfg->nb_participants > CTE_MAX_TOURNAMENT_PLAYERS){
+            return e_inval_val; // 2 to 8 teams (4 to 16 players)
+        }
+        uint8_t nb_teams = (uint8_t)(cfg->nb_participants / 2);
+        if(cfg->type == TOURNAMENT_KNOCKOUT){
+            if((nb_teams & (nb_teams - 1)) != 0){
+                return e_inval_val; // Teams must be power of 2 (2, 4, 8)
+            }
+        }
+    } else {
+        if(cfg->nb_participants < 2 || cfg->nb_participants > CTE_MAX_TOURNAMENT_PLAYERS){
+            return e_inval_val;
+        }
+        if(cfg->type == TOURNAMENT_KNOCKOUT){
+            uint8_t n = cfg->nb_participants;
+            if((n & (n - 1)) != 0){
+                return e_inval_val; // Must be power of 2 (2, 4, 8, 16)
+            }
         }
     }
 
@@ -34,6 +49,7 @@ t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg
     memset(t, 0, sizeof(s_cte_tournament));
     t->config = *cfg;
     t->champion_idx = -1;
+    t->champion_team_idx = -1;
 
     for(uint8_t i = 0; i < cfg->nb_participants; i++){
         t->standings[i] = i;
@@ -59,6 +75,27 @@ t_cteerr init_tournament(s_cte_tournament *t, const s_cte_tournament_config *cfg
         }
         if(p->elo_current == 0){
             p->elo_current = p->elo_start;
+        }
+    }
+
+    if(cfg->is_team_mode){
+        t->nb_teams = (uint8_t)(cfg->nb_participants / 2);
+        t->config.nb_teams = t->nb_teams;
+        for(uint8_t k = 0; k < t->nb_teams; k++){
+            uint8_t p1 = (uint8_t)(2 * k);
+            uint8_t p2 = (uint8_t)(2 * k + 1);
+            s_cte_tournament_team *tm = &t->teams[k];
+            tm->p1_idx = p1;
+            tm->p2_idx = p2;
+            snprintf(tm->name, sizeof(tm->name), "Team %u (%.10s & %.10s)",
+                     (unsigned)(k + 1),
+                     t->config.participants[p1].name,
+                     t->config.participants[p2].name);
+            int32_t avg_elo = ((int32_t)t->config.participants[p1].elo_start +
+                               (int32_t)t->config.participants[p2].elo_start) / 2;
+            tm->elo_start = (int16_t)avg_elo;
+            tm->elo_current = (int16_t)avg_elo;
+            t->team_standings[k] = k;
         }
     }
 
@@ -187,6 +224,176 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     return e_ok;
 }
 
+static t_cteerr play_tournament_team_match(s_cte_tournament *t,
+                                           uint8_t t1_idx,
+                                           uint8_t t2_idx,
+                                           uint8_t stage,
+                                           bool force_decisive_winner,
+                                           s_cte_tournament_match *out_match)
+{
+    s_cte_tournament_team *tm1 = &t->teams[t1_idx];
+    s_cte_tournament_team *tm2 = &t->teams[t2_idx];
+
+    s_cte_tournament_participant *p0 = &t->config.participants[tm1->p1_idx];
+    s_cte_tournament_participant *p2 = &t->config.participants[tm1->p2_idx];
+    s_cte_tournament_participant *p1 = &t->config.participants[tm2->p1_idx];
+    s_cte_tournament_participant *p3 = &t->config.participants[tm2->p2_idx];
+
+    s_cte_game game;
+    char *names[4] = { p0->name, p1->name, p2->name, p3->name };
+    t_cteerr err = init_game(&game, 4, names, true);
+    if(err != e_ok) return err;
+
+    game.players.players[0].is_human     = p0->is_human;
+    game.players.players[0].evaluator    = p0->evaluator;
+    game.players.players[0].eval_context = p0->eval_context;
+
+    game.players.players[1].is_human     = p1->is_human;
+    game.players.players[1].evaluator    = p1->evaluator;
+    game.players.players[1].eval_context = p1->eval_context;
+
+    game.players.players[2].is_human     = p2->is_human;
+    game.players.players[2].evaluator    = p2->evaluator;
+    game.players.players[2].eval_context = p2->eval_context;
+
+    game.players.players[3].is_human     = p3->is_human;
+    game.players.players[3].evaluator    = p3->evaluator;
+    game.players.players[3].eval_context = p3->eval_context;
+
+    struct s_cte_match match;
+    err = init_match(&match, &game, t->config.winning_score > 0 ? t->config.winning_score : 101);
+    if(err != e_ok){
+        free_game(&game);
+        return err;
+    }
+    match.max_rounds = t->config.max_rounds > 0 ? t->config.max_rounds : 10;
+    match.is_team_mode = true;
+
+    bool has_human = p0->is_human || p1->is_human || p2->is_human || p3->is_human;
+    bool match_silent = t->config.silent && !has_human;
+
+    s_cte_round_config r_cfg = {
+        .first_player  = (stage + t1_idx + t2_idx) % 4,
+        .is_team_mode  = true,
+        .evaluators    = { NULL, NULL, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+        .callbacks     = match_silent ? NULL : t->config.callbacks,
+        .ui_context    = t->config.ui_context,
+    };
+
+    err = run_match(&match, &r_cfg);
+    if(err != e_ok){
+        free_game(&game);
+        return err;
+    }
+
+    // In Knockout mode, if match ends in a tie, play sudden-death rounds until broken
+    if(force_decisive_winner && match.match_scores[0] == match.match_scores[1]){
+        uint8_t tiebreaker_rounds = 0;
+        match.winning_score = UINT16_MAX;
+        while(match.match_scores[0] == match.match_scores[1] && tiebreaker_rounds < 3){
+            match.max_rounds = match.round_nb + 1;
+            err = run_match(&match, &r_cfg);
+            if(err != e_ok){
+                free_game(&game);
+                return err;
+            }
+            tiebreaker_rounds++;
+        }
+        if(match.match_scores[0] == match.match_scores[1]){
+            if(tm1->total_points > tm2->total_points){
+                match.match_scores[0]++;
+            } else if(tm2->total_points > tm1->total_points){
+                match.match_scores[1]++;
+            } else {
+                match.match_scores[t1_idx % 2]++;
+            }
+        }
+    }
+
+    uint16_t s1 = match.match_scores[0];
+    uint16_t s2 = match.match_scores[1];
+    uint16_t tab1 = match.match_tablics[0];
+    uint16_t tab2 = match.match_tablics[1];
+
+    int8_t winner = -1;
+    if(s1 > s2){
+        winner = 0;
+    } else if(s2 > s1){
+        winner = 1;
+    } else {
+        winner = -1;
+    }
+
+    // Update Team records
+    tm1->matches_played++;
+    tm2->matches_played++;
+    tm1->total_points += s1;
+    tm2->total_points += s2;
+    tm1->total_tablics += tab1;
+    tm2->total_tablics += tab2;
+
+    if(winner == 0){
+        tm1->matches_won++;
+        tm2->matches_lost++;
+    } else if(winner == 1){
+        tm2->matches_won++;
+        tm1->matches_lost++;
+    } else {
+        tm1->matches_tied++;
+        tm2->matches_tied++;
+    }
+
+    // Update individual participant records
+    p0->matches_played++; p2->matches_played++;
+    p0->total_points += s1; p2->total_points += s1;
+    p0->total_tablics += tab1; p2->total_tablics += tab1;
+
+    p1->matches_played++; p3->matches_played++;
+    p1->total_points += s2; p3->total_points += s2;
+    p1->total_tablics += tab2; p3->total_tablics += tab2;
+
+    if(winner == 0){
+        p0->matches_won++; p2->matches_won++;
+        p1->matches_lost++; p3->matches_lost++;
+    } else if(winner == 1){
+        p1->matches_won++; p3->matches_won++;
+        p0->matches_lost++; p2->matches_lost++;
+    } else {
+        p0->matches_tied++; p2->matches_tied++;
+        p1->matches_tied++; p3->matches_tied++;
+    }
+
+    // In-tournament Team Elo rating update
+    int16_t team1_elo = (int16_t)(((int32_t)p0->elo_current + (int32_t)p2->elo_current) / 2);
+    int16_t team2_elo = (int16_t)(((int32_t)p1->elo_current + (int32_t)p3->elo_current) / 2);
+
+    double score1 = (winner == 0) ? 1.0 : (winner == -1) ? 0.5 : 0.0;
+    double score2 = 1.0 - score1;
+    int16_t d1 = compute_elo_delta(team1_elo, team2_elo, score1, CTE_DEFAULT_K_FACTOR);
+    int16_t d2 = compute_elo_delta(team2_elo, team1_elo, score2, CTE_DEFAULT_K_FACTOR);
+
+    p0->elo_current += d1; if(p0->elo_current < CTE_MIN_ELO) p0->elo_current = CTE_MIN_ELO;
+    p2->elo_current += d1; if(p2->elo_current < CTE_MIN_ELO) p2->elo_current = CTE_MIN_ELO;
+    p1->elo_current += d2; if(p1->elo_current < CTE_MIN_ELO) p1->elo_current = CTE_MIN_ELO;
+    p3->elo_current += d2; if(p3->elo_current < CTE_MIN_ELO) p3->elo_current = CTE_MIN_ELO;
+
+    tm1->elo_current = (int16_t)(((int32_t)p0->elo_current + (int32_t)p2->elo_current) / 2);
+    tm2->elo_current = (int16_t)(((int32_t)p1->elo_current + (int32_t)p3->elo_current) / 2);
+
+    if(out_match){
+        out_match->p1_idx        = t1_idx;
+        out_match->p2_idx        = t2_idx;
+        out_match->score_p1      = s1;
+        out_match->score_p2      = s2;
+        out_match->winner_idx    = winner;
+        out_match->bracket_stage = stage;
+    }
+
+    free_game(&game);
+    return e_ok;
+}
+
 static int compare_standings(const void *a, const void *b, void *thunk){
     const s_cte_tournament *t = (const s_cte_tournament*)thunk;
     uint8_t idx_a = *(const uint8_t*)a;
@@ -228,9 +435,111 @@ static void sort_standings(s_cte_tournament *t){
     }
 }
 
+static int compare_team_standings(const void *a, const void *b, void *thunk){
+    const s_cte_tournament *t = (const s_cte_tournament*)thunk;
+    uint8_t idx_a = *(const uint8_t*)a;
+    uint8_t idx_b = *(const uint8_t*)b;
+
+    const s_cte_tournament_team *ta = &t->teams[idx_a];
+    const s_cte_tournament_team *tb = &t->teams[idx_b];
+
+    // 1. Most wins
+    if(ta->matches_won != tb->matches_won){
+        return (int)tb->matches_won - (int)ta->matches_won;
+    }
+    // 2. Fewest losses
+    if(ta->matches_lost != tb->matches_lost){
+        return (int)ta->matches_lost - (int)tb->matches_lost;
+    }
+    // 3. Highest total points
+    if(ta->total_points != tb->total_points){
+        return (int)tb->total_points - (int)ta->total_points;
+    }
+    // 4. Most tablics
+    if(ta->total_tablics != tb->total_tablics){
+        return (int)tb->total_tablics - (int)ta->total_tablics;
+    }
+    return 0;
+}
+
+static void sort_team_standings(s_cte_tournament *t){
+    uint8_t n = t->nb_teams;
+    for(uint8_t i = 1; i < n; i++){
+        uint8_t key = t->team_standings[i];
+        int j = (int)i - 1;
+        while(j >= 0 && compare_team_standings(&t->team_standings[j], &key, t) > 0){
+            t->team_standings[j + 1] = t->team_standings[j];
+            j--;
+        }
+        t->team_standings[j + 1] = key;
+    }
+}
+
 t_cteerr run_tournament(s_cte_tournament *t){
     if(!t) return e_null;
     t->nb_matches = 0;
+
+    if(t->config.is_team_mode){
+        uint8_t n_teams = t->nb_teams;
+        if(t->config.type == TOURNAMENT_ROUND_ROBIN){
+            for(uint8_t i = 0; i < n_teams; i++){
+                for(uint8_t j = (uint8_t)(i + 1); j < n_teams; j++){
+                    if(t->nb_matches >= CTE_MAX_TOURNAMENT_MATCHES) break;
+
+                    s_cte_tournament_match m;
+                    t_cteerr err = play_tournament_team_match(t, i, j, 0, false, &m);
+                    if(err != e_ok) return err;
+
+                    t->matches[t->nb_matches++] = m;
+                }
+            }
+            sort_team_standings(t);
+            sort_standings(t);
+            t->champion_team_idx = (int8_t)t->team_standings[0];
+            t->champion_idx = (int8_t)t->teams[t->team_standings[0]].p1_idx;
+            return e_ok;
+        }
+
+        if(t->config.type == TOURNAMENT_KNOCKOUT){
+            uint8_t pool[CTE_MAX_TOURNAMENT_TEAMS];
+            uint8_t pool_size = n_teams;
+            for(uint8_t i = 0; i < pool_size; i++) pool[i] = i;
+
+            uint8_t stage = 0;
+            while(pool_size > 1){
+                uint8_t next_pool[CTE_MAX_TOURNAMENT_TEAMS];
+                uint8_t next_size = 0;
+
+                for(uint8_t k = 0; k < pool_size; k += 2){
+                    if(t->nb_matches >= CTE_MAX_TOURNAMENT_MATCHES) break;
+
+                    uint8_t t1 = pool[k];
+                    uint8_t t2 = pool[k + 1];
+
+                    s_cte_tournament_match m;
+                    t_cteerr err = play_tournament_team_match(t, t1, t2, stage, true, &m);
+                    if(err != e_ok) return err;
+
+                    t->matches[t->nb_matches++] = m;
+
+                    uint8_t winner_id = (m.winner_idx == 0) ? t1 : t2;
+                    next_pool[next_size++] = winner_id;
+                }
+
+                pool_size = next_size;
+                for(uint8_t i = 0; i < pool_size; i++) pool[i] = next_pool[i];
+                stage++;
+            }
+
+            t->champion_team_idx = (int8_t)pool[0];
+            t->champion_idx = (int8_t)t->teams[pool[0]].p1_idx;
+            sort_team_standings(t);
+            sort_standings(t);
+            return e_ok;
+        }
+
+        return e_inval_val;
+    }
 
     if(t->config.type == TOURNAMENT_ROUND_ROBIN){
         uint8_t n = t->config.nb_participants;
@@ -322,6 +631,59 @@ t_cteerr sync_tournament_profiles(const s_cte_tournament *t){
 void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style style){
     if(!t) return;
     (void)style;
+
+    if(t->config.is_team_mode){
+        printf("\n===================================================================================================\n");
+        if(t->config.type == TOURNAMENT_ROUND_ROBIN){
+            printf("                        CTE 2v2 TOURNAMENT — ROUND ROBIN TEAM STANDINGS                            \n");
+        } else {
+            printf("                        CTE 2v2 TOURNAMENT — KNOCKOUT CUP TEAM STANDINGS                           \n");
+        }
+        printf("===================================================================================================\n");
+        printf(" Rank | %-32s | Elo Bef | Elo Aft | Delta | Won  | Lost | Tied | Pts   | Tablics | Win%%  \n", "Team (Members)");
+        printf("------|----------------------------------|---------|---------|-------|------|------|------|-------|---------|-------\n");
+
+        for(uint8_t r = 0; r < t->nb_teams; r++){
+            uint8_t idx = t->team_standings[r];
+            const s_cte_tournament_team *tm = &t->teams[idx];
+
+            double win_rate = (tm->matches_played > 0)
+                ? ((double)tm->matches_won / (double)tm->matches_played) * 100.0
+                : 0.0;
+
+            char rank_str[16];
+            if(idx == t->champion_team_idx){
+                snprintf(rank_str, sizeof(rank_str), " [1] *");
+            } else {
+                snprintf(rank_str, sizeof(rank_str), "  %u   ", (unsigned)(r + 1));
+            }
+
+            int16_t delta = tm->elo_current - tm->elo_start;
+            char delta_str[16];
+            snprintf(delta_str, sizeof(delta_str), "%+5d", (int)delta);
+
+            printf("%s| %-32.32s |  %5d  |  %5d  | %s |  %2u  |  %2u  |  %2u  |  %4u |   %3u   | %5.1f%%\n",
+                   rank_str,
+                   tm->name,
+                   (int)tm->elo_start,
+                   (int)tm->elo_current,
+                   delta_str,
+                   (unsigned)tm->matches_won,
+                   (unsigned)tm->matches_lost,
+                   (unsigned)tm->matches_tied,
+                   (unsigned)tm->total_points,
+                   (unsigned)tm->total_tablics,
+                   win_rate);
+        }
+
+        printf("===================================================================================================\n");
+        if(t->champion_team_idx >= 0 && t->champion_team_idx < t->nb_teams){
+            printf(" >>> 2v2 TOURNAMENT CHAMPIONS: %s <<<\n",
+                   t->teams[t->champion_team_idx].name);
+            printf("===================================================================================================\n\n");
+        }
+        return;
+    }
 
     printf("\n===================================================================================================\n");
     if(t->config.type == TOURNAMENT_ROUND_ROBIN){

@@ -36,15 +36,15 @@ static t_cteerr bitboard_push_move(struct s_cte_move_list *moves, t_card card, u
 
 // Combine disjoint base masks into multi-capture unions (with fast bloom filter deduplication)
 static void combine_disjoint_masks(uint64_t current_union,
-                                  uint8_t start_idx,
-                                  uint8_t num_active,
+                                  uint16_t start_idx,
+                                  uint16_t num_active,
                                   const uint64_t *active_masks,
                                   uint64_t *out_captures,
                                   uint16_t *out_count,
                                   uint16_t max_captures,
                                   uint64_t *bloom)
 {
-    for(uint8_t i = start_idx; i < num_active; i++){
+    for(uint16_t i = start_idx; i < num_active; i++){
         uint64_t next_mask = active_masks[i];
         if((current_union & next_mask) == 0){
             uint64_t new_union = current_union | next_mask;
@@ -70,7 +70,7 @@ static void combine_disjoint_masks(uint64_t current_union,
                     out_captures[(*out_count)++] = new_union;
                 }
             }
-            combine_disjoint_masks(new_union, (uint8_t)(i + 1), num_active, active_masks,
+            combine_disjoint_masks(new_union, (uint16_t)(i + 1), num_active, active_masks,
                                    out_captures, out_count, max_captures, bloom);
         }
     }
@@ -80,15 +80,15 @@ static void combine_disjoint_masks(uint64_t current_union,
 // CTE_BACKEND_BITBOARD : Compact SWAR Rank Patterns (7.1 KB RAM, 100% L1)
 // ============================================================================
 
-static uint8_t collect_active_base_masks_rank(const uint8_t table_suits[13],
-                                              uint64_t table_swar,
-                                              uint8_t target_val,
-                                              uint64_t *out_masks,
-                                              uint8_t max_out)
+static uint16_t collect_active_base_masks_rank(const uint8_t table_suits[13],
+                                               uint64_t table_swar,
+                                               uint8_t target_val,
+                                               uint64_t *out_masks,
+                                               uint16_t max_out)
 {
     if(target_val == 0 || target_val > 14) return 0;
 
-    uint8_t found = 0;
+    uint16_t found = 0;
     uint16_t offset = g_rank_pattern_offsets[target_val];
     uint16_t count  = g_rank_pattern_counts[target_val];
 
@@ -196,8 +196,8 @@ void bitboard_gen_all_compact_moves_rank(s_cte_bitboard_move_list *out_list, uin
         out_list->moves[out_list->size++] = (s_cte_bitboard_move){ hand->array[h], 0 };
     }
 
-    uint64_t active_masks[64];
-    uint64_t cap_by_slot[8][256];
+    uint64_t active_masks[256];
+    uint64_t cap_by_slot[8][512];
     uint16_t cap_count[8] = {0};
     uint64_t bloom_by_slot[8][4] = {{0}};
     int8_t   val_to_slot[15];
@@ -213,10 +213,10 @@ void bitboard_gen_all_compact_moves_rank(s_cte_bitboard_move_list *out_list, uin
             if(s11 == -1 && num_slots < 8){
                 s11 = (int8_t)(num_slots++);
                 val_to_slot[11] = s11;
-                uint8_t n11 = collect_active_base_masks_rank(table_suits, table_swar, 11, active_masks, 64);
+                uint16_t n11 = collect_active_base_masks_rank(table_suits, table_swar, 11, active_masks, 256);
                 if(n11 > 0){
                     combine_disjoint_masks(0, 0, n11, active_masks,
-                                           cap_by_slot[s11], &cap_count[s11], 256, bloom_by_slot[s11]);
+                                           cap_by_slot[s11], &cap_count[s11], 512, bloom_by_slot[s11]);
                 }
             }
             if(s11 >= 0){
@@ -231,10 +231,10 @@ void bitboard_gen_all_compact_moves_rank(s_cte_bitboard_move_list *out_list, uin
             if(s1 == -1 && num_slots < 8){
                 s1 = (int8_t)(num_slots++);
                 val_to_slot[1] = s1;
-                uint8_t n1 = collect_active_base_masks_rank(table_suits, table_swar, 1, active_masks, 64);
+                uint16_t n1 = collect_active_base_masks_rank(table_suits, table_swar, 1, active_masks, 256);
                 if(n1 > 0){
                     combine_disjoint_masks(0, 0, n1, active_masks,
-                                           cap_by_slot[s1], &cap_count[s1], 256, bloom_by_slot[s1]);
+                                           cap_by_slot[s1], &cap_count[s1], 512, bloom_by_slot[s1]);
                 }
             }
             if(s1 >= 0){
@@ -261,10 +261,10 @@ void bitboard_gen_all_compact_moves_rank(s_cte_bitboard_move_list *out_list, uin
             if(sv == -1 && num_slots < 8){
                 sv = (int8_t)(num_slots++);
                 val_to_slot[v] = sv;
-                uint8_t nv = collect_active_base_masks_rank(table_suits, table_swar, v, active_masks, 64);
+                uint16_t nv = collect_active_base_masks_rank(table_suits, table_swar, v, active_masks, 256);
                 if(nv > 0){
                     combine_disjoint_masks(0, 0, nv, active_masks,
-                                           cap_by_slot[sv], &cap_count[sv], 256, bloom_by_slot[sv]);
+                                           cap_by_slot[sv], &cap_count[sv], 512, bloom_by_slot[sv]);
                 }
             }
             if(sv >= 0){
@@ -304,26 +304,26 @@ t_cteerr bitboard_gen_card_moves_rank(struct s_cte_move_list *moves, uint64_t ta
     bool ace = is_ace(card);
     uint8_t val = get_value(card);
 
-    uint64_t active_masks[64];
-    uint64_t capture_masks[256];
+    uint64_t active_masks[256];
+    uint64_t capture_masks[512];
     uint16_t capture_count = 0;
     uint64_t bloom[4] = {0};
 
     if(ace){
-        uint8_t n11 = collect_active_base_masks_rank(table_suits, table_swar, 11, active_masks, 64);
+        uint16_t n11 = collect_active_base_masks_rank(table_suits, table_swar, 11, active_masks, 256);
         if(n11 > 0){
-            combine_disjoint_masks(0, 0, n11, active_masks, capture_masks, &capture_count, 256, bloom);
+            combine_disjoint_masks(0, 0, n11, active_masks, capture_masks, &capture_count, 512, bloom);
         }
 
-        uint64_t active_masks_1[64];
-        uint8_t n1 = collect_active_base_masks_rank(table_suits, table_swar, 1, active_masks_1, 64);
+        uint64_t active_masks_1[256];
+        uint16_t n1 = collect_active_base_masks_rank(table_suits, table_swar, 1, active_masks_1, 256);
         if(n1 > 0){
-            combine_disjoint_masks(0, 0, n1, active_masks_1, capture_masks, &capture_count, 256, bloom);
+            combine_disjoint_masks(0, 0, n1, active_masks_1, capture_masks, &capture_count, 512, bloom);
         }
     } else {
-        uint8_t n = collect_active_base_masks_rank(table_suits, table_swar, val, active_masks, 64);
+        uint16_t n = collect_active_base_masks_rank(table_suits, table_swar, val, active_masks, 256);
         if(n > 0){
-            combine_disjoint_masks(0, 0, n, active_masks, capture_masks, &capture_count, 256, bloom);
+            combine_disjoint_masks(0, 0, n, active_masks, capture_masks, &capture_count, 512, bloom);
         }
     }
 

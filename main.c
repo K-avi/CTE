@@ -162,11 +162,12 @@ int main(int argc, char **argv){
     static struct option long_options[] = {
         {"players",       required_argument, 0, 'n'},
         {"team",          no_argument,       0, 't'},
+        {"2v2",           no_argument,       0, 't'},
         {"ai-type",       required_argument, 0, 'a'},
         {"ai",            required_argument, 0, 'a'},
         {"mode",          required_argument, 0, 'm'},
         {"style",         required_argument, 0, 's'},
-        {"game",          required_argument, 0, 'g'},
+        {"game-mode",     required_argument, 0, 'g'},
         {"winning-score", required_argument, 0, 'w'},
         {"rounds",        required_argument, 0, 'c'},
         {"cycles",        required_argument, 0, 'c'},
@@ -422,11 +423,12 @@ int main(int argc, char **argv){
 
         s_cli_ui_ctx cli_ui_ctx = {
             .style        = cli_config.style,
-            .is_team_mode = false,
+            .is_team_mode = cli_config.is_team_mode,
         };
 
         s_cte_tournament_config t_cfg = {
             .type            = t_type,
+            .is_team_mode    = cli_config.is_team_mode,
             .winning_score   = cli_config.winning_score,
             .max_rounds      = cli_config.max_rounds,
             .silent          = true,
@@ -437,13 +439,29 @@ int main(int argc, char **argv){
         };
 
         if(nb_cli_participants > 0){
-            if(nb_cli_participants < 2){
-                fprintf(stderr, "Error: Tournament requires at least 2 participants (got %u).\n", (unsigned)nb_cli_participants);
-                return 1;
-            }
-            if(t_type == TOURNAMENT_KNOCKOUT && (nb_cli_participants & (nb_cli_participants - 1)) != 0){
-                fprintf(stderr, "Error: Knockout tournament requires power-of-2 participants (2, 4, 8, 16). Got %u.\n", (unsigned)nb_cli_participants);
-                return 1;
+            if(cli_config.is_team_mode){
+                if((nb_cli_participants % 2) != 0){
+                    fprintf(stderr, "Error: 2v2 tournament requires an even number of participants (got %u).\n", (unsigned)nb_cli_participants);
+                    return 1;
+                }
+                if(nb_cli_participants < 4){
+                    fprintf(stderr, "Error: 2v2 tournament requires at least 4 participants / 2 teams (got %u).\n", (unsigned)nb_cli_participants);
+                    return 1;
+                }
+                uint8_t nb_teams = (uint8_t)(nb_cli_participants / 2);
+                if(t_type == TOURNAMENT_KNOCKOUT && (nb_teams & (nb_teams - 1)) != 0){
+                    fprintf(stderr, "Error: Knockout 2v2 tournament requires power-of-2 teams (2, 4, 8 teams / 4, 8, 16 players). Got %u players.\n", (unsigned)nb_cli_participants);
+                    return 1;
+                }
+            } else {
+                if(nb_cli_participants < 2){
+                    fprintf(stderr, "Error: Tournament requires at least 2 participants (got %u).\n", (unsigned)nb_cli_participants);
+                    return 1;
+                }
+                if(t_type == TOURNAMENT_KNOCKOUT && (nb_cli_participants & (nb_cli_participants - 1)) != 0){
+                    fprintf(stderr, "Error: Knockout tournament requires power-of-2 participants (2, 4, 8, 16). Got %u.\n", (unsigned)nb_cli_participants);
+                    return 1;
+                }
             }
             t_cfg.nb_participants = nb_cli_participants;
             for(uint8_t i = 0; i < nb_cli_participants; i++){
@@ -458,11 +476,22 @@ int main(int argc, char **argv){
             }
         } else {
             uint8_t nb_part = cli_config.nb_players;
-            if(nb_part < 2 || nb_part > CTE_MAX_TOURNAMENT_PLAYERS){
-                nb_part = 4;
-            }
-            if(t_type == TOURNAMENT_KNOCKOUT && (nb_part & (nb_part - 1)) != 0){
-                nb_part = 4; // Default to 4 if not power of 2
+            if(cli_config.is_team_mode){
+                if(nb_part < 4 || nb_part > CTE_MAX_TOURNAMENT_PLAYERS){
+                    nb_part = 4;
+                }
+                if((nb_part % 2) != 0) nb_part = 4;
+                uint8_t nb_teams = (uint8_t)(nb_part / 2);
+                if(t_type == TOURNAMENT_KNOCKOUT && (nb_teams & (nb_teams - 1)) != 0){
+                    nb_part = 4;
+                }
+            } else {
+                if(nb_part < 2 || nb_part > CTE_MAX_TOURNAMENT_PLAYERS){
+                    nb_part = 4;
+                }
+                if(t_type == TOURNAMENT_KNOCKOUT && (nb_part & (nb_part - 1)) != 0){
+                    nb_part = 4; // Default to 4 if not power of 2
+                }
             }
             t_cfg.nb_participants = nb_part;
 
@@ -511,9 +540,16 @@ int main(int argc, char **argv){
             return 1;
         }
 
-        printf("Launching CTE Tournament (%s, %u participants)...\n",
-               (t_type == TOURNAMENT_ROUND_ROBIN) ? "Round Robin" : "Knockout Cup",
-               (unsigned)t_cfg.nb_participants);
+        if(t_cfg.is_team_mode){
+            printf("Launching CTE 2v2 Team Tournament (%s, %u teams, %u participants)...\n",
+                   (t_type == TOURNAMENT_ROUND_ROBIN) ? "Round Robin" : "Knockout Cup",
+                   (unsigned)t.nb_teams,
+                   (unsigned)t_cfg.nb_participants);
+        } else {
+            printf("Launching CTE Tournament (%s, %u participants)...\n",
+                   (t_type == TOURNAMENT_ROUND_ROBIN) ? "Round Robin" : "Knockout Cup",
+                   (unsigned)t_cfg.nb_participants);
+        }
 
         err = run_tournament(&t);
         if(err != e_ok){

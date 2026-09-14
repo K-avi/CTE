@@ -620,6 +620,226 @@ int run_test_tournament(void) {
     free_tournament(&t_multi);
   }
 
+  // ---- Test 2v2 Tournament Validation ----
+  {
+    s_cte_tournament t_err;
+    s_cte_tournament_config cfg_err = {0};
+    cfg_err.is_team_mode = true;
+
+    // Odd participants error (5)
+    cfg_err.nb_participants = 5;
+    assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+    // Less than 4 participants error (2)
+    cfg_err.nb_participants = 2;
+    assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+    // More than 16 participants error (18)
+    cfg_err.nb_participants = 18;
+    assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+    // Knockout: non-power-of-2 teams error (6 participants = 3 teams)
+    cfg_err.type = TOURNAMENT_KNOCKOUT;
+    cfg_err.nb_participants = 6;
+    assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+    // Knockout: 10 participants = 5 teams error
+    cfg_err.nb_participants = 10;
+    assert(init_tournament(&t_err, &cfg_err) == e_inval_val);
+
+    // Valid knockout configurations (4 participants = 2 teams, 8 participants = 4 teams)
+    cfg_err.nb_participants = 4;
+    for (int i = 0; i < 4; i++) {
+      snprintf(cfg_err.participants[i].name, sizeof(cfg_err.participants[i].name), "P%d", i);
+      cfg_err.participants[i].evaluator = eval_random;
+    }
+    assert(init_tournament(&t_err, &cfg_err) == e_ok);
+    assert(t_err.nb_teams == 2);
+    free_tournament(&t_err);
+
+    cfg_err.nb_participants = 8;
+    for (int i = 0; i < 8; i++) {
+      snprintf(cfg_err.participants[i].name, sizeof(cfg_err.participants[i].name), "P%d", i);
+      cfg_err.participants[i].evaluator = eval_random;
+    }
+    assert(init_tournament(&t_err, &cfg_err) == e_ok);
+    assert(t_err.nb_teams == 4);
+    free_tournament(&t_err);
+  }
+
+  // ---- Test 2v2 Tournament Round Robin (4 Teams / 8 Players) ----
+  {
+    s_cte_tournament t_rr2v2;
+    s_cte_tournament_config cfg_rr2v2 = {
+        .type = TOURNAMENT_ROUND_ROBIN,
+        .is_team_mode = true,
+        .nb_participants = 8,
+        .winning_score = 15,
+        .max_rounds = 1,
+        .silent = true,
+        .participants = {
+            // Team 0: Alpha (Greedy + Greedy)
+            {.name = "Alpha_1", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            {.name = "Alpha_2", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            // Team 1: Beta (Random + Random)
+            {.name = "Beta_1",  .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM},
+            {.name = "Beta_2",  .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM},
+            // Team 2: Gamma (Random + Dumb with elo_start = 600 to prevent 0-floor clamping)
+            {.name = "Gamma_1", .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM, .elo_start = 600},
+            {.name = "Gamma_2", .evaluator = eval_dumb,   .is_human = false, .ai_type = AI_TYPE_DUMB,   .elo_start = 600},
+            // Team 3: Delta (Greedy + Random)
+            {.name = "Delta_1", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            {.name = "Delta_2", .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM},
+        },
+    };
+
+    err = init_tournament(&t_rr2v2, &cfg_rr2v2);
+    assert(err == e_ok);
+    assert(t_rr2v2.nb_teams == 4);
+    assert(t_rr2v2.teams[0].p1_idx == 0 && t_rr2v2.teams[0].p2_idx == 1);
+    assert(t_rr2v2.teams[1].p1_idx == 2 && t_rr2v2.teams[1].p2_idx == 3);
+    assert(t_rr2v2.teams[2].p1_idx == 4 && t_rr2v2.teams[2].p2_idx == 5);
+    assert(t_rr2v2.teams[3].p1_idx == 6 && t_rr2v2.teams[3].p2_idx == 7);
+
+    err = run_tournament(&t_rr2v2);
+    assert(err == e_ok);
+    // 4 teams in round-robin: 4 * 3 / 2 = 6 matches
+    assert(t_rr2v2.nb_matches == 6);
+
+    for (int i = 0; i < 4; i++) {
+      assert(t_rr2v2.teams[i].matches_played == 3);
+      assert(t_rr2v2.teams[i].matches_won +
+             t_rr2v2.teams[i].matches_lost +
+             t_rr2v2.teams[i].matches_tied == 3);
+    }
+    for (int i = 0; i < 8; i++) {
+      assert(t_rr2v2.config.participants[i].matches_played == 3);
+    }
+
+    assert(t_rr2v2.champion_team_idx >= 0 && t_rr2v2.champion_team_idx < 4);
+    assert(t_rr2v2.team_standings[0] == (uint8_t)t_rr2v2.champion_team_idx);
+
+    // Verify team Elo conservation (sum of deltas approximately zero)
+    int32_t net_elo_delta = 0;
+    for (int i = 0; i < 4; i++) {
+      net_elo_delta += (t_rr2v2.teams[i].elo_current - t_rr2v2.teams[i].elo_start);
+    }
+    assert(net_elo_delta >= -5 && net_elo_delta <= 5);
+
+    print_tournament_standings(&t_rr2v2, CTE_RENDER_ASCII);
+    free_tournament(&t_rr2v2);
+  }
+
+  // ---- Test 2v2 Tournament Knockout Cup (4 Teams / 8 Players) ----
+  {
+    s_cte_tournament t_ko2v2;
+    s_cte_tournament_config cfg_ko2v2 = {
+        .type = TOURNAMENT_KNOCKOUT,
+        .is_team_mode = true,
+        .nb_participants = 8,
+        .winning_score = 15,
+        .max_rounds = 1,
+        .silent = true,
+        .participants = {
+            // Team 0: Alpha (Greedy + Greedy)
+            {.name = "Alpha_1", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            {.name = "Alpha_2", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            // Team 1: Beta (Dumb + Dumb)
+            {.name = "Beta_1",  .evaluator = eval_dumb,   .is_human = false, .ai_type = AI_TYPE_DUMB},
+            {.name = "Beta_2",  .evaluator = eval_dumb,   .is_human = false, .ai_type = AI_TYPE_DUMB},
+            // Team 2: Gamma (Greedy + Random)
+            {.name = "Gamma_1", .evaluator = eval_greedy, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            {.name = "Gamma_2", .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM},
+            // Team 3: Delta (Random + Dumb)
+            {.name = "Delta_1", .evaluator = eval_random, .is_human = false, .ai_type = AI_TYPE_RANDOM},
+            {.name = "Delta_2", .evaluator = eval_dumb,   .is_human = false, .ai_type = AI_TYPE_DUMB},
+        },
+    };
+
+    err = init_tournament(&t_ko2v2, &cfg_ko2v2);
+    assert(err == e_ok);
+    assert(t_ko2v2.nb_teams == 4);
+
+    err = run_tournament(&t_ko2v2);
+    assert(err == e_ok);
+    // 4 teams in knockout: 2 semifinals + 1 final = 3 matches
+    assert(t_ko2v2.nb_matches == 3);
+
+    assert(t_ko2v2.champion_team_idx >= 0 && t_ko2v2.champion_team_idx < 4);
+    // Champion team must have won exactly 2 matches
+    assert(t_ko2v2.teams[t_ko2v2.champion_team_idx].matches_won == 2);
+    assert(t_ko2v2.teams[t_ko2v2.champion_team_idx].matches_lost == 0);
+
+    print_tournament_standings(&t_ko2v2, CTE_RENDER_ASCII);
+    free_tournament(&t_ko2v2);
+  }
+
+  // ---- Test 2v2 Tournament Profile Sync Integration ----
+  {
+    const char *t2v2_db_path = "/tmp/cte_test_t2v2_profiles.dat";
+    unlink(t2v2_db_path);
+
+    s_cte_profile_db db;
+    err = init_profile_db(&db, t2v2_db_path);
+    assert(err == e_ok);
+
+    s_cte_profile *p_alice = find_or_create_profile(&db, "Alice");
+    s_cte_profile *p_bob   = find_or_create_profile(&db, "Bob");
+    assert(p_alice != NULL && p_bob != NULL);
+    p_alice->elo = 1200;
+    p_bob->elo = 1200;
+    assert(save_profiles(&db) == e_ok);
+
+    s_cte_tournament t_sync;
+    s_cte_tournament_config cfg_sync = {
+        .type = TOURNAMENT_ROUND_ROBIN,
+        .is_team_mode = true,
+        .nb_participants = 4,
+        .winning_score = 15,
+        .max_rounds = 1,
+        .silent = true,
+        .profile_db = &db,
+        .persist_ai = false,
+        .participants = {
+            // Team 0: Humans (Alice & Bob)
+            {.name = "Alice", .evaluator = eval_greedy, .is_human = true, .ai_type = AI_TYPE_RANDOM},
+            {.name = "Bob",   .evaluator = eval_greedy, .is_human = true, .ai_type = AI_TYPE_RANDOM},
+            // Team 1: Bots (evaluator dumb so humans win, but with AI_TYPE_GREEDY starting Elo = 1000)
+            {.name = "Bot_Dumb1", .evaluator = eval_dumb, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+            {.name = "Bot_Dumb2", .evaluator = eval_dumb, .is_human = false, .ai_type = AI_TYPE_GREEDY},
+        },
+    };
+
+    err = init_tournament(&t_sync, &cfg_sync);
+    assert(err == e_ok);
+    assert(t_sync.nb_teams == 2);
+
+    err = run_tournament(&t_sync);
+    assert(err == e_ok);
+    assert(t_sync.nb_matches == 1);
+
+    err = sync_tournament_profiles(&t_sync);
+    assert(err == e_ok);
+
+    // Verify profiles updated
+    s_cte_profile *r_alice = find_profile(&db, "Alice");
+    s_cte_profile *r_bob   = find_profile(&db, "Bob");
+    assert(r_alice != NULL && r_bob != NULL);
+    assert(r_alice->matches_played == 1);
+    assert(r_bob->matches_played == 1);
+    assert(r_alice->matches_won == 1);
+    assert(r_bob->matches_won == 1);
+    assert(r_alice->elo > 1200);
+    assert(r_bob->elo > 1200);
+
+    // Verify transient bots were not added to db
+    assert(find_profile(&db, "Bot_Dumb1") == NULL);
+    assert(find_profile(&db, "Bot_Dumb2") == NULL);
+
+    free_tournament(&t_sync);
+    unlink(t2v2_db_path);
+  }
+
   return 0;
 }
 
