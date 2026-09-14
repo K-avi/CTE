@@ -573,6 +573,7 @@ int run_tui_frontend(const s_cte_tui_config *config) {
     noecho();
     keypad(stdscr, TRUE);
     curs_set(0);
+    scrollok(stdscr, FALSE);
     init_tui_colors();
     local_curses = true;
   }
@@ -805,13 +806,16 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
     erase();
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
-    (void)max_y;
 
-    int box_w = 72;
+    int box_w = (max_x >= 90) ? 84 : ((max_x >= 84) ? 80 : ((max_x > 4) ? max_x - 2 : 78));
     int box_h = 7 + *nb_slots;
-    if (box_h < 15) box_h = 15;
+    if (box_h < 13) box_h = 13;
+    int max_avail_h = (max_y > 4) ? max_y - 2 : 23;
+    if (box_h > max_avail_h) box_h = max_avail_h;
+
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
-    int start_y = 2;
+    int start_y = (max_y > box_h) ? (max_y - box_h) / 2 : 1;
+    int inner_w = (box_w > 8) ? box_w - 6 : 70;
 
     char title[64];
     snprintf(title, sizeof(title), "TOURNAMENT PARTICIPANTS (%u / %u max)",
@@ -822,7 +826,7 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
       int row_y = start_y + 2 + i;
       char line_buf[96];
       if (slots[i].is_human) {
-        snprintf(line_buf, sizeof(line_buf), "#%u [Human]  : %-18.18s (Human Player)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [Human]  : %-18.18s (Human Player)",
                  (unsigned)(i + 1), slots[i].name);
       } else if (slots[i].ai_type == AI_TYPE_CHEATER) {
         uint8_t d = slots[i].cheater_depth ? slots[i].cheater_depth : 4;
@@ -830,40 +834,40 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         int elo = (d <= 2) ? 1320 : (d <= 4 ? 1600 : 1790);
         char strat_buf[32];
         snprintf(strat_buf, sizeof(strat_buf), "Cheater-%s", lvl);
-        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
                  (unsigned)(i + 1), slots[i].name, strat_buf, elo);
       } else if (slots[i].ai_type == AI_TYPE_ORACLE) {
-        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
                  (unsigned)(i + 1), slots[i].name, "Oracle-Solver", 1950);
       } else if (slots[i].ai_type == AI_TYPE_FAIR) {
-        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
                  (unsigned)(i + 1), slots[i].name, "Fair (PIMC)",
                  (int)cte_default_ai_elo(AI_TYPE_FAIR));
       } else if (slots[i].ai_type == AI_TYPE_ISMCTS) {
-        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
                  (unsigned)(i + 1), slots[i].name, "ISMCTS",
                  (int)cte_default_ai_elo(AI_TYPE_ISMCTS));
       } else {
         const char *strat = (slots[i].ai_type == AI_TYPE_GREEDY)  ? "Greedy"
                           : (slots[i].ai_type == AI_TYPE_RANDOM)  ? "Random"
                                                                   : "Dumb";
-        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+        snprintf(line_buf, sizeof(line_buf), "#%-2u [AI]     : %-18.18s [%-14s] (Elo: %4d)",
                  (unsigned)(i + 1), slots[i].name, strat,
                  (int)cte_default_ai_elo(slots[i].ai_type));
       }
 
       if (i == cur) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-        mvprintw(row_y, start_x + 3, " -> %-64s ", line_buf);
+        mvprintw(row_y, start_x + 3, " -> %-*s", inner_w - 4, line_buf);
         attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
       } else {
-        mvprintw(row_y, start_x + 3, "    %-64s ", line_buf);
+        mvprintw(row_y, start_x + 3, "    %-*s", inner_w - 4, line_buf);
       }
     }
 
     if (notice[0]) {
       attron(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
-      mvprintw(start_y + box_h - 4, start_x + 3, "%-64s", notice);
+      mvprintw(start_y + box_h - 4, start_x + 3, "%-*s", inner_w, notice);
       attroff(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
     }
 
@@ -1001,12 +1005,12 @@ static void tui_menu_tournament(void) {
     erase();
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
-    (void)max_y;
 
-    int box_w = 74;
+    int box_w = (max_x >= 86) ? 80 : ((max_x > 4) ? max_x - 2 : 74);
     int box_h = 18;
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
-    int start_y = 3;
+    int start_y = (max_y > box_h) ? (max_y - box_h) / 2 : 2;
+    int inner_w = (box_w > 8) ? box_w - 6 : 68;
 
     tui_draw_box(start_y, start_x, box_h, box_w, "TOURNAMENT ARENA");
 
@@ -1031,10 +1035,10 @@ static void tui_menu_tournament(void) {
       int row_y = start_y + 3 + (i >= 4 ? i + 1 : i);
       if (i == selected) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-        mvprintw(row_y, start_x + 3, " ->  %-62s ", items[i]);
+        mvprintw(row_y, start_x + 3, " ->  %-*s", inner_w - 5, items[i]);
         attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
       } else {
-        mvprintw(row_y, start_x + 3, "     %-62s ", items[i]);
+        mvprintw(row_y, start_x + 3, "     %-*s", inner_w - 5, items[i]);
       }
     }
 
@@ -1393,6 +1397,7 @@ int run_tui_main_menu(void) {
   noecho();
   keypad(stdscr, TRUE);
   curs_set(0);
+  scrollok(stdscr, FALSE);
   init_tui_colors();
 
   int selected = 0;
