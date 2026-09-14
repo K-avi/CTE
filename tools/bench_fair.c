@@ -99,7 +99,9 @@ int main(int argc, char **argv){
     unsigned int seed = 42;
     uint32_t cand_opts = CTE_PIMC_DEFAULT_OPTS;
     uint32_t base_opts = PIMC_OPT_NONE;
-    bool base_is_greedy = false;
+    e_cte_ai_type base_ai_type = AI_TYPE_FAIR;
+    s_cte_search_config base_search_cfg;
+    memset(&base_search_cfg, 0, sizeof(base_search_cfg));
 
     if(argc >= 2){
         nb_rounds = (uint32_t)atoi(argv[1]);
@@ -123,7 +125,22 @@ int main(int argc, char **argv){
 
     if(argc >= 5){
         if(strcmp(argv[4], "greedy") == 0){
-            base_is_greedy = true;
+            base_ai_type = AI_TYPE_GREEDY;
+        } else if(strncmp(argv[4], "cheater", 7) == 0){
+            base_ai_type = AI_TYPE_CHEATER;
+            uint8_t d = 2;
+            const char *at = strchr(argv[4], '@');
+            if(!at) at = strchr(argv[4], ':');
+            if(at) d = (uint8_t)atoi(at + 1);
+            if(d == 0) d = 2;
+            base_search_cfg.max_depth = d;
+            base_search_cfg.ubp_model = UBP_STRICT_ADMISSIBLE;
+        } else if(strncmp(argv[4], "oracle", 6) == 0){
+            base_ai_type = AI_TYPE_ORACLE;
+            base_search_cfg.max_depth = 6;
+            base_search_cfg.ubp_model = UBP_NO_TABLIC;
+            base_search_cfg.multi_deal = true;
+            base_search_cfg.solve_deal4 = true;
         } else {
             base_opts = parse_opt_flags(argv[4]);
         }
@@ -133,8 +150,12 @@ int main(int argc, char **argv){
 
     char cand_desc[128], base_desc[128];
     opt_flags_to_string(cand_opts, cand_desc, sizeof(cand_desc));
-    if(base_is_greedy){
+    if(base_ai_type == AI_TYPE_GREEDY){
         snprintf(base_desc, sizeof(base_desc), "Greedy Heuristic AI (AI_TYPE_GREEDY)");
+    } else if(base_ai_type == AI_TYPE_CHEATER){
+        snprintf(base_desc, sizeof(base_desc), "Cheater Minimax AI (depth %u, UBP_STRICT)", base_search_cfg.max_depth);
+    } else if(base_ai_type == AI_TYPE_ORACLE){
+        snprintf(base_desc, sizeof(base_desc), "Omniscient Oracle AI (depth 6, multi_deal, solve_deal4)");
     } else {
         opt_flags_to_string(base_opts, base_desc, sizeof(base_desc));
     }
@@ -146,7 +167,7 @@ int main(int argc, char **argv){
     printf("  Candidate : %s (flags: 0x%02X)\n", cand_desc, cand_opts);
     printf("  Baseline  : %s\n", base_desc);
     printf("Reproduce: CTE_TEST_SEED=%u ./build/bench_fair %u %u 0x%02X %s\n\n",
-           seed, nb_rounds, seed, cand_opts, base_is_greedy ? "greedy" : "base");
+           seed, nb_rounds, seed, cand_opts, argv[4] ? argv[4] : "base");
 
     s_cte_pimc_config candidate_cfg;
     pimc_config_init(&candidate_cfg, CTE_PIMC_DEFAULT_WORLDS, CTE_PIMC_DEFAULT_DEPTH, seed + 1);
@@ -156,11 +177,17 @@ int main(int argc, char **argv){
     pimc_config_init(&baseline_cfg, CTE_PIMC_DEFAULT_WORLDS, CTE_PIMC_DEFAULT_DEPTH, seed + 2);
     pimc_config_set_opts(&baseline_cfg, base_opts);
 
+    void *base_ctx = NULL;
+    if(base_ai_type == AI_TYPE_FAIR){
+        base_ctx = &baseline_cfg;
+    } else if(base_ai_type == AI_TYPE_CHEATER || base_ai_type == AI_TYPE_ORACLE){
+        base_ctx = &base_search_cfg;
+    }
+
     s_cte_bench_result res;
     t_cteerr err = cte_run_ai_benchmark(
         AI_TYPE_FAIR, &candidate_cfg,
-        base_is_greedy ? AI_TYPE_GREEDY : AI_TYPE_FAIR,
-        base_is_greedy ? NULL : &baseline_cfg,
+        base_ai_type, base_ctx,
         nb_rounds, &res
     );
 
