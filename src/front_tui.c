@@ -24,6 +24,7 @@
 typedef struct {
   e_cte_render_style style;
   bool is_team_mode;
+  bool needs_opening_pause;
   char last_log[256];
   uint8_t cur_round;
   const struct s_cte_player_data *last_player;
@@ -297,6 +298,7 @@ static void tui_on_round_start(uint8_t round_nb, void *ui_ctx) {
   s_tui_ui_ctx *ctx = (s_tui_ui_ctx *)ui_ctx;
   if (ctx) {
     ctx->cur_round = round_nb;
+    ctx->needs_opening_pause = true;
     snprintf(ctx->last_log, sizeof(ctx->last_log), "Starting Round %u",
              (unsigned)round_nb);
   }
@@ -323,7 +325,14 @@ static void tui_on_turn_start(const s_cte_game_state *state,
 
   if (!cur_pl->is_human) {
     render_tui_board(state, NULL, 0, ctx);
-    napms(400);
+    // Only pause at the very opening of a round if bot plays first, so human observes table reset
+    if (ctx->needs_opening_pause) {
+      ctx->needs_opening_pause = false;
+      napms(350);
+    }
+  } else {
+    // Human is taking a turn, so opening table is observed
+    ctx->needs_opening_pause = false;
   }
 }
 
@@ -340,9 +349,9 @@ static void tui_on_move_played(const struct s_cte_player_data *player,
   snprintf(ctx->last_log, sizeof(ctx->last_log), "[%s] played : %s",
            player ? player->player_name : "Player", move_str);
 
-  // If bot move, short pause to see bot play
+  // If bot move, snappy pause so human perceives the move without sluggish waiting
   if (player && !player->is_human) {
-    napms(350);
+    napms(120);
   }
 }
 
