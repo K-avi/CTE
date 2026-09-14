@@ -148,7 +148,7 @@ t_cteerr pos_gen_moves(struct s_cte_move_list *moves, const s_cte_pos *pos){
                 temp &= (temp - 1);
             }
         }
-        if(moves->size >= moves->max){
+        if(!moves->moves || moves->size >= moves->max){
             uint16_t new_cap = moves->max == 0 ? 16 : moves->max * 2;
             struct s_cte_move *new_arr = realloc(moves->moves, sizeof(struct s_cte_move) * new_cap);
             if(!new_arr) return e_realloc;
@@ -398,7 +398,7 @@ static inline int16_t score_compact_move(const s_cte_bitboard_move *m, const s_c
         temp &= (temp - 1);
     }
     // Points captured (heavily prioritized) + card count bonus
-    score += (int16_t)(pts * 100 + count * 10);
+    score = (int16_t)(score + (pts * 100 + count * 10));
     return score;
 }
 
@@ -741,7 +741,7 @@ static inline int16_t score_root_move(const struct s_cte_move *m, uint64_t table
     if(table_bb > 0 && mask == table_bb){
         score += 10000;
     }
-    score += (int16_t)(pts * 100 + m->cards_picked.size * 10);
+    score = (int16_t)(score + (pts * 100 + m->cards_picked.size * 10));
     return score;
 }
 

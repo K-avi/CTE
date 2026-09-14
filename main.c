@@ -22,9 +22,9 @@ static void print_usage(const char *prog_name){
     printf("Tablić card game engine & interactive player.\n\n");
     printf("Options:\n");
     printf("  -n, --players <number>     Number of players: 2 (default), 3, or 4\n");
-    printf("  -t, --team                 Enable 4-player 2v2 team mode (valid only with -n 4)\n");
+    printf("  -t, --team                 Enable 4-player 2v2 team mode (or 2v2 team tournament)\n");
     printf("  -a, --ai-type <list>       AI strategy or comma-separated list (e.g. greedy or greedy,cheater)\n");
-    printf("                             Supported: random (default), dumb, greedy, cheater\n");
+    printf("                             Supported: random (default), dumb, greedy, cheater, fair, ismcts, oracle\n");
     printf("  -m, --mode <mode>          UI mode: cli (default), tui, gui\n");
     printf("  -s, --style <style>        Card render style: unicode (default), ascii\n");
     printf("  -g, --game <mode>          Game mode: h-vs-ai (default), h-vs-h, ai-vs-ai\n");

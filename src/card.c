@@ -70,9 +70,10 @@ void format_card(char *buf, size_t buf_size, t_card card, e_cte_render_style sty
 }
 
 void print_card(uint8_t card){
-    uint8_t value = get_value(card);
-    uint8_t color = get_color(card);
-    printf("%s of %s\n", value_str[value-2], color_str[color]);
+    if(card >= 52) return;
+    uint8_t rank = (uint8_t)(card % 13);
+    uint8_t suit = (uint8_t)(card / 13);
+    printf("%s of %s\n", value_str[rank], color_str[suit]);
 }
 
 void print_table(uint64_t table_bb){
@@ -81,9 +82,11 @@ void print_table(uint64_t table_bb){
     uint64_t temp = table_bb;
     while(temp > 0){
         t_card card = (t_card)__builtin_ctzll(temp);
-        uint8_t value = get_value(card);
-        uint8_t color = get_color(card);
-        printf("%s of %s\n", value_str[value-2], color_str[color]);
+        if(card < 52){
+            uint8_t rank = (uint8_t)(card % 13);
+            uint8_t suit = (uint8_t)(card / 13);
+            printf("%s of %s\n", value_str[rank], color_str[suit]);
+        }
         temp &= (temp - 1);
     }
     printf("\n");

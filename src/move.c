@@ -34,7 +34,7 @@ void free_move_list(struct s_cte_move_list *list){
 
 static t_cteerr move_list_push(struct s_cte_move_list *list, const struct s_cte_move *move){
     if(!list || !move) return e_null;
-    if(list->size >= list->max){
+    if(!list->moves || list->size >= list->max){
         uint16_t new_cap = (list->max == 0) ? 16 : (list->max * 2);
         struct s_cte_move *new_arr = realloc(list->moves, sizeof(struct s_cte_move) * new_cap);
         if(!new_arr) return e_realloc;

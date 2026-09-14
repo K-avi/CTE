@@ -77,12 +77,20 @@ void tracker_determinize(const s_cte_card_tracker *tracker,
     if(!tracker || !hand_sizes || !opp_hands || !seed) return;
 
     // Collect unseen cards into a flat array
-    uint8_t unseen[52];
+    uint8_t unseen[52] = {0};
     uint8_t n_unseen = 0;
     uint64_t temp = tracker->unseen_bb;
-    while(temp > 0){
+    while(temp > 0 && n_unseen < 52){
         unseen[n_unseen++] = (uint8_t)__builtin_ctzll(temp);
         temp &= (temp - 1);
+    }
+
+    // Initialize opponent hands
+    for(uint8_t p = 0; p < nb_players; p++){
+        opp_hands[p] = 0;
+    }
+    if(tracker->observer < nb_players){
+        opp_hands[tracker->observer] = own_hand_bb;
     }
 
     // Fisher-Yates partial shuffle: we only need sum(opp_hand_sizes) cards
@@ -91,6 +99,8 @@ void tracker_determinize(const s_cte_card_tracker *tracker,
         if(p == tracker->observer) continue;
         total_needed += hand_sizes[p];
     }
+
+    if(total_needed == 0 || n_unseen == 0) return;
 
     // Clamp to available unseen cards
     if(total_needed > n_unseen) total_needed = n_unseen;
@@ -105,16 +115,14 @@ void tracker_determinize(const s_cte_card_tracker *tracker,
     }
 
     // Deal shuffled unseen cards round-robin to opponents
-    for(uint8_t p = 0; p < nb_players; p++){
-        opp_hands[p] = 0;
-    }
-    opp_hands[tracker->observer] = own_hand_bb;
-
     uint8_t deal_idx = 0;
     for(uint8_t p = 0; p < nb_players; p++){
         if(p == tracker->observer) continue;
-        for(uint8_t c = 0; c < hand_sizes[p] && deal_idx < total_needed; c++){
-            opp_hands[p] |= (1ULL << unseen[deal_idx++]);
+        for(uint8_t c = 0; c < hand_sizes[p] && deal_idx < total_needed && deal_idx < n_unseen; c++){
+            if(unseen[deal_idx] < 52){
+                opp_hands[p] |= (1ULL << unseen[deal_idx]);
+            }
+            deal_idx++;
         }
     }
 }

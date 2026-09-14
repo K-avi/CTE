@@ -118,6 +118,7 @@ int run_test_core(void) {
     cur_before = game.deck.cur_card;
     err = deal_next_hand(&game);
     assert(err == e_ok);
+    assert(game.deck.cur_card == cur_before + 12);
     assert(game.deck.cur_card == 52); // Exhausted
 
     reset_all_players(players);

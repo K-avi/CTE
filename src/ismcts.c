@@ -133,12 +133,12 @@ static int32_t rollout(s_cte_pos pos, uint8_t root_player, uint32_t *seed)
                 uint64_t cap = cpt.moves[i].capture_mask;
                 while(cap > 0){
                     int bit = __builtin_ctzll(cap);
-                    pts += get_points((t_card)bit);
+                    pts = (int16_t)(pts + get_points((t_card)bit));
                     cap &= (cap - 1);
                 }
-                pts += get_points(cpt.moves[i].card_played);
+                pts = (int16_t)(pts + get_points(cpt.moves[i].card_played));
                 if((pos.table_bb & ~cpt.moves[i].capture_mask) == 0){
-                    pts += 10; // Tablić bonus
+                    pts = (int16_t)(pts + 10); // Tablić bonus
                 }
             }
             if(pts > best_pts){

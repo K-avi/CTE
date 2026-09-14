@@ -203,7 +203,7 @@ static void render_tui_board(const s_cte_game_state *state,
              "[q]) ===");
     attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
 
-    if (moves && moves->size > 0) {
+    if (moves && moves->moves && moves->size > 0) {
       int display_max = 8;
       int start_idx = 0;
       if (selected_move_idx >= (uint16_t)display_max) {

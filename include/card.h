@@ -31,12 +31,12 @@ extern uint8_t __tab_points[52];
 extern uint8_t values[13];
 
 // Utility macros
-#define get_value(card) (values[(card)%13])
-#define get_color(card) ((card)/13)
+#define get_value(card) ((card) < 52 ? values[(card)%13] : values[0])
+#define get_color(card) ((card) < 52 ? ((card)/13) : 0)
 #define is_ace(card) (get_value(card) == 11)
 
 #define get_points_var(value, color) (__tab_points[(color)*13 + (value-2)])
-#define get_points(card) (__tab_points[card])
+#define get_points(card) ((card) < 52 ? __tab_points[card] : 0)
 
 #define DECKSIZE 52
 

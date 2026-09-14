@@ -22,7 +22,7 @@ static t_cteerr bitboard_push_move(struct s_cte_move_list *moves, t_card card, u
         }
     }
 
-    if(moves->size >= moves->max){
+    if(!moves->moves || moves->size >= moves->max){
         uint16_t new_cap = (moves->max == 0) ? 16 : (moves->max * 2);
         struct s_cte_move *new_arr = realloc(moves->moves, sizeof(struct s_cte_move) * new_cap);
         if(!new_arr) return e_realloc;

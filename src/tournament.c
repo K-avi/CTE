@@ -206,8 +206,8 @@ static t_cteerr play_tournament_match(s_cte_tournament *t,
     double score2 = 1.0 - score1;
     int16_t d1 = compute_elo_delta(p1->elo_current, p2->elo_current, score1, CTE_DEFAULT_K_FACTOR);
     int16_t d2 = compute_elo_delta(p2->elo_current, p1->elo_current, score2, CTE_DEFAULT_K_FACTOR);
-    p1->elo_current += d1;
-    p2->elo_current += d2;
+    p1->elo_current = (int16_t)(p1->elo_current + d1);
+    p2->elo_current = (int16_t)(p2->elo_current + d2);
     if(p1->elo_current < CTE_MIN_ELO) p1->elo_current = CTE_MIN_ELO;
     if(p2->elo_current < CTE_MIN_ELO) p2->elo_current = CTE_MIN_ELO;
 
@@ -373,10 +373,10 @@ static t_cteerr play_tournament_team_match(s_cte_tournament *t,
     int16_t d1 = compute_elo_delta(team1_elo, team2_elo, score1, CTE_DEFAULT_K_FACTOR);
     int16_t d2 = compute_elo_delta(team2_elo, team1_elo, score2, CTE_DEFAULT_K_FACTOR);
 
-    p0->elo_current += d1; if(p0->elo_current < CTE_MIN_ELO) p0->elo_current = CTE_MIN_ELO;
-    p2->elo_current += d1; if(p2->elo_current < CTE_MIN_ELO) p2->elo_current = CTE_MIN_ELO;
-    p1->elo_current += d2; if(p1->elo_current < CTE_MIN_ELO) p1->elo_current = CTE_MIN_ELO;
-    p3->elo_current += d2; if(p3->elo_current < CTE_MIN_ELO) p3->elo_current = CTE_MIN_ELO;
+    p0->elo_current = (int16_t)(p0->elo_current + d1); if(p0->elo_current < CTE_MIN_ELO) p0->elo_current = CTE_MIN_ELO;
+    p2->elo_current = (int16_t)(p2->elo_current + d1); if(p2->elo_current < CTE_MIN_ELO) p2->elo_current = CTE_MIN_ELO;
+    p1->elo_current = (int16_t)(p1->elo_current + d2); if(p1->elo_current < CTE_MIN_ELO) p1->elo_current = CTE_MIN_ELO;
+    p3->elo_current = (int16_t)(p3->elo_current + d2); if(p3->elo_current < CTE_MIN_ELO) p3->elo_current = CTE_MIN_ELO;
 
     tm1->elo_current = (int16_t)(((int32_t)p0->elo_current + (int32_t)p2->elo_current) / 2);
     tm2->elo_current = (int16_t)(((int32_t)p1->elo_current + (int32_t)p3->elo_current) / 2);
@@ -501,8 +501,9 @@ t_cteerr run_tournament(s_cte_tournament *t){
         }
 
         if(t->config.type == TOURNAMENT_KNOCKOUT){
-            uint8_t pool[CTE_MAX_TOURNAMENT_TEAMS];
+            uint8_t pool[CTE_MAX_TOURNAMENT_TEAMS] = {0};
             uint8_t pool_size = n_teams;
+            if(pool_size == 0) return e_inval_val;
             for(uint8_t i = 0; i < pool_size; i++) pool[i] = i;
 
             uint8_t stage = 0;
@@ -561,8 +562,9 @@ t_cteerr run_tournament(s_cte_tournament *t){
     }
 
     if(t->config.type == TOURNAMENT_KNOCKOUT){
-        uint8_t pool[CTE_MAX_TOURNAMENT_PLAYERS];
+        uint8_t pool[CTE_MAX_TOURNAMENT_PLAYERS] = {0};
         uint8_t pool_size = t->config.nb_participants;
+        if(pool_size == 0) return e_inval_val;
         for(uint8_t i = 0; i < pool_size; i++) pool[i] = i;
 
         uint8_t stage = 0;
@@ -652,7 +654,7 @@ void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style st
                 : 0.0;
 
             char rank_str[16];
-            if(idx == t->champion_team_idx){
+            if(t->champion_team_idx >= 0 && idx == (uint8_t)t->champion_team_idx){
                 snprintf(rank_str, sizeof(rank_str), " [1] *");
             } else {
                 snprintf(rank_str, sizeof(rank_str), "  %u   ", (unsigned)(r + 1));
@@ -704,7 +706,7 @@ void print_tournament_standings(const s_cte_tournament *t, e_cte_render_style st
             : 0.0;
 
         char rank_str[16];
-        if(idx == t->champion_idx){
+        if(t->champion_idx >= 0 && idx == (uint8_t)t->champion_idx){
             snprintf(rank_str, sizeof(rank_str), " [1] *");
         } else {
             snprintf(rank_str, sizeof(rank_str), "  %u   ", (unsigned)(r + 1));
