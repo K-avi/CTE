@@ -630,7 +630,6 @@ static void tui_menu_quick_match(void) {
   e_cli_game_type gtype = GAME_HUMAN_VS_AI;
   bool team_mode = false;
   e_cte_ai_type ai_strat = AI_TYPE_GREEDY;
-  uint8_t cheater_depth = 4;
   uint16_t win_score = 101;
   e_cte_render_style style = CTE_RENDER_UNICODE;
   char profile_name[32] = {0};
@@ -640,7 +639,7 @@ static void tui_menu_quick_match(void) {
   int cur_profile_idx = -1;
 
   int selected = 0;
-  const int total_items = 10;
+  const int total_items = 9;
 
   for (;;) {
     erase();
@@ -649,7 +648,7 @@ static void tui_menu_quick_match(void) {
     (void)max_y;
 
     int box_w = 64;
-    int box_h = 23;
+    int box_h = 22;
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
     int start_y = 2;
 
@@ -659,18 +658,15 @@ static void tui_menu_quick_match(void) {
                             : (gtype == GAME_HUMAN_VS_HUMAN) ? "Human vs Human"
                                                              : "AI vs AI";
     const char *ai_str = (ai_strat == AI_TYPE_GREEDY)    ? "Greedy"
-                         : (ai_strat == AI_TYPE_CHEATER) ? "Cheater (Minimax)"
-                         : (ai_strat == AI_TYPE_ORACLE)  ? "Oracle (Solver)"
                          : (ai_strat == AI_TYPE_FAIR)    ? "Fair (PIMC)"
                          : (ai_strat == AI_TYPE_ISMCTS)  ? "ISMCTS"
+                         : (ai_strat == AI_TYPE_CHEATER) ? "Cheater (Minimax)"
+                         : (ai_strat == AI_TYPE_ORACLE)  ? "Oracle (Solver)"
                          : (ai_strat == AI_TYPE_RANDOM)  ? "Random"
                                                          : "Dumb";
     const char *style_str = (style == CTE_RENDER_UNICODE) ? "Unicode" : "ASCII";
-    const char *lvl_str = (cheater_depth <= 2) ? "Easy (2 plies)"
-                        : (cheater_depth <= 4) ? "Normal (4 plies)"
-                                               : "Master (6 plies)";
 
-    char items[10][64];
+    char items[9][64];
     snprintf(items[0], sizeof(items[0]), "1. Number of Players : < %u >",
              (unsigned)players);
     snprintf(items[1], sizeof(items[1]), "2. Game Mode         : < %s >",
@@ -679,24 +675,17 @@ static void tui_menu_quick_match(void) {
              team_mode ? "ON" : "OFF");
     snprintf(items[3], sizeof(items[3]), "4. AI Strategy       : < %s >",
              ai_str);
-    if (ai_strat == AI_TYPE_CHEATER) {
-      snprintf(items[4], sizeof(items[4]), "5. Cheater Level     : < %s >",
-               lvl_str);
-    } else {
-      snprintf(items[4], sizeof(items[4]), "5. Cheater Level     : < %s (inactive) >",
-               lvl_str);
-    }
-    snprintf(items[5], sizeof(items[5]), "6. Target Score      : < %u points >",
+    snprintf(items[4], sizeof(items[4]), "5. Target Score      : < %u points >",
              (unsigned)win_score);
-    snprintf(items[6], sizeof(items[6]), "7. Card Render Style : < %s >",
+    snprintf(items[5], sizeof(items[5]), "6. Card Render Style : < %s >",
              style_str);
-    snprintf(items[7], sizeof(items[7]), "8. Player Profile    : < %s >",
+    snprintf(items[6], sizeof(items[6]), "7. Player Profile    : < %s >",
              profile_name[0] ? profile_name : "None");
-    snprintf(items[8], sizeof(items[8]), "[ START MATCH ]");
-    snprintf(items[9], sizeof(items[9]), "[ Back to Main Menu ]");
+    snprintf(items[7], sizeof(items[7]), "[ START MATCH ]");
+    snprintf(items[8], sizeof(items[8]), "[ Back to Main Menu ]");
 
     for (int i = 0; i < total_items; i++) {
-      int row_y = start_y + 3 + (i >= 8 ? i + 1 : i);
+      int row_y = start_y + 3 + (i >= 7 ? i + 1 : i);
       if (i == selected) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
         mvprintw(row_y, start_x + 4, " ->  %-48s ", items[i]);
@@ -733,21 +722,19 @@ static void tui_menu_quick_match(void) {
         if (players == 4)
           team_mode = !team_mode;
       } else if (selected == 3) {
-        ai_strat = (ai_strat == AI_TYPE_GREEDY)    ? AI_TYPE_CHEATER
-                   : (ai_strat == AI_TYPE_CHEATER) ? AI_TYPE_ORACLE
-                   : (ai_strat == AI_TYPE_ORACLE)  ? AI_TYPE_FAIR
-                   : (ai_strat == AI_TYPE_FAIR)    ? AI_TYPE_ISMCTS
-                   : (ai_strat == AI_TYPE_ISMCTS)  ? AI_TYPE_RANDOM
-                   : (ai_strat == AI_TYPE_RANDOM)  ? AI_TYPE_DUMB
-                                                   : AI_TYPE_GREEDY;
+        ai_strat = (ai_strat == AI_TYPE_GREEDY)  ? AI_TYPE_FAIR
+                 : (ai_strat == AI_TYPE_FAIR)    ? AI_TYPE_ISMCTS
+                 : (ai_strat == AI_TYPE_ISMCTS)  ? AI_TYPE_CHEATER
+                 : (ai_strat == AI_TYPE_CHEATER) ? AI_TYPE_ORACLE
+                 : (ai_strat == AI_TYPE_ORACLE)  ? AI_TYPE_RANDOM
+                 : (ai_strat == AI_TYPE_RANDOM)  ? AI_TYPE_DUMB
+                                                 : AI_TYPE_GREEDY;
       } else if (selected == 4) {
-        cheater_depth = (cheater_depth == 2) ? 4 : (cheater_depth == 4 ? 6 : 2);
-      } else if (selected == 5) {
         win_score = (win_score == 101) ? 51 : (win_score == 51 ? 25 : 101);
-      } else if (selected == 6) {
+      } else if (selected == 5) {
         style = (style == CTE_RENDER_UNICODE) ? CTE_RENDER_ASCII
                                               : CTE_RENDER_UNICODE;
-      } else if (selected == 7) {
+      } else if (selected == 6) {
         // Cycle profiles
         if (has_db && db.count > 0) {
           cur_profile_idx++;
@@ -760,7 +747,7 @@ static void tui_menu_quick_match(void) {
         }
       }
     } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-      if (selected == 7) {
+      if (selected == 6) {
         echo();
         curs_set(1);
         char new_name[32] = {0};
@@ -777,7 +764,7 @@ static void tui_menu_quick_match(void) {
             save_profiles(&db);
           }
         }
-      } else if (selected == 8) {
+      } else if (selected == 7) {
         struct timespec ts;
         if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
           srand((unsigned int)(ts.tv_nsec ^ ts.tv_sec));
@@ -789,7 +776,7 @@ static void tui_menu_quick_match(void) {
             .game_type = gtype,
             .nb_ai_types = 1,
             .ai_types = {ai_strat, ai_strat, ai_strat, ai_strat},
-            .cheater_depth = cheater_depth,
+            .cheater_depth = 4,
             .style = style,
             .winning_score = win_score,
             .max_rounds = 0,
@@ -801,7 +788,7 @@ static void tui_menu_quick_match(void) {
         if (has_db) {
           load_profiles(&db);
         }
-      } else if (selected == 9) {
+      } else if (selected == 8) {
         return;
       }
     } else if (ch == 'q' || ch == 'Q' || ch == 27) {
@@ -896,17 +883,9 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
     } else if (ch == KEY_DOWN || ch == 'j' || ch == 'J') {
       if (cur < *nb_slots - 1) cur++;
     } else if (ch == KEY_LEFT || ch == KEY_RIGHT || ch == ' ') {
-      // Cycle: Human -> Random -> Dumb -> Greedy -> Cheater (Easy) -> Cheater (Normal) -> Cheater (Master) -> Human
+      // Cycle: Human -> Greedy -> Fair -> ISMCTS -> Cheater -> Oracle -> Random -> Dumb -> Human
       if (slots[cur].is_human) {
         slots[cur].is_human = false;
-        slots[cur].ai_type = AI_TYPE_RANDOM;
-        slots[cur].cheater_depth = 0;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Random_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_RANDOM) {
-        slots[cur].ai_type = AI_TYPE_DUMB;
-        slots[cur].cheater_depth = 0;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Dumb_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_DUMB) {
         slots[cur].ai_type = AI_TYPE_GREEDY;
         slots[cur].cheater_depth = 0;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Greedy_%u", (unsigned)(cur + 1));
@@ -920,20 +899,22 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_ISMCTS_%u", (unsigned)(cur + 1));
       } else if (slots[cur].ai_type == AI_TYPE_ISMCTS) {
         slots[cur].ai_type = AI_TYPE_CHEATER;
-        slots[cur].cheater_depth = 2;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_Easy_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_CHEATER && (slots[cur].cheater_depth <= 2)) {
         slots[cur].cheater_depth = 4;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_Normal_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_CHEATER && (slots[cur].cheater_depth <= 4)) {
-        slots[cur].cheater_depth = 6;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_Master_%u", (unsigned)(cur + 1));
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_%u", (unsigned)(cur + 1));
       } else if (slots[cur].ai_type == AI_TYPE_CHEATER) {
         slots[cur].ai_type = AI_TYPE_ORACLE;
         slots[cur].cheater_depth = 6;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Oracle_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_ORACLE) {
+        slots[cur].ai_type = AI_TYPE_RANDOM;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Random_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_RANDOM) {
+        slots[cur].ai_type = AI_TYPE_DUMB;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Dumb_%u", (unsigned)(cur + 1));
       } else {
-        // From Oracle: check if another human already exists
+        // From Dumb: check if another human already exists
         bool already_has_human = false;
         for (uint8_t j = 0; j < *nb_slots; j++) {
           if (j != cur && slots[j].is_human) {
@@ -942,9 +923,9 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
           }
         }
         if (already_has_human) {
-          slots[cur].ai_type = AI_TYPE_RANDOM;
+          slots[cur].ai_type = AI_TYPE_GREEDY;
           slots[cur].cheater_depth = 0;
-          snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Random_%u", (unsigned)(cur + 1));
+          snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Greedy_%u", (unsigned)(cur + 1));
           snprintf(notice, sizeof(notice), "Notice: Maximum 1 human player allowed per tournament.");
         } else {
           slots[cur].is_human = true;
@@ -977,9 +958,9 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
     } else if (ch == 'a' || ch == 'A') {
       if (*nb_slots < TUI_MAX_PARTICIPANTS) {
         slots[*nb_slots].is_human = false;
-        slots[*nb_slots].ai_type = AI_TYPE_RANDOM;
-        slots[*nb_slots].cheater_depth = 4;
-        snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Random_%u", (unsigned)(*nb_slots + 1));
+        slots[*nb_slots].ai_type = AI_TYPE_GREEDY;
+        slots[*nb_slots].cheater_depth = 0;
+        snprintf(slots[*nb_slots].name, sizeof(slots[*nb_slots].name), "Bot_Greedy_%u", (unsigned)(*nb_slots + 1));
         (*nb_slots)++;
         cur = *nb_slots - 1;
       } else {
@@ -1010,12 +991,11 @@ static void tui_menu_tournament(void) {
       { false, AI_TYPE_RANDOM,  0, "Bot_Random"  },
   };
   uint8_t nb_slots = 4;
-  uint8_t cheater_depth = 4;
   uint16_t win_score = 25;
   bool persist_ai = false;
 
   int selected = 0;
-  const int total_items = 7;
+  const int total_items = 6;
 
   for (;;) {
     erase();
@@ -1024,7 +1004,7 @@ static void tui_menu_tournament(void) {
     (void)max_y;
 
     int box_w = 74;
-    int box_h = 19;
+    int box_h = 18;
     int start_x = (max_x > box_w) ? (max_x - box_w) / 2 : 1;
     int start_y = 3;
 
@@ -1032,11 +1012,7 @@ static void tui_menu_tournament(void) {
 
     bool ko_invalid = (type == TOURNAMENT_KNOCKOUT && (nb_slots & (nb_slots - 1)) != 0);
 
-    const char *lvl_str = (cheater_depth <= 2) ? "Easy (2 plies)"
-                        : (cheater_depth <= 4) ? "Normal (4 plies)"
-                                               : "Master (6 plies)";
-
-    char items[7][64];
+    char items[6][64];
     snprintf(items[0], sizeof(items[0]), "1. Format            : < %s >",
              (type == TOURNAMENT_ROUND_ROBIN) ? "Round Robin (Championship)"
                                               : "Knockout Cup (Elimination)");
@@ -1044,17 +1020,15 @@ static void tui_menu_tournament(void) {
              "2. Participants      : < %u configured >   [Enter to edit]%s",
              (unsigned)nb_slots,
              ko_invalid ? " (!)" : "");
-    snprintf(items[2], sizeof(items[2]), "3. Cheater Default   : < %s >",
-             lvl_str);
-    snprintf(items[3], sizeof(items[3]), "4. Match Target      : < %u points >",
+    snprintf(items[2], sizeof(items[2]), "3. Match Target      : < %u points >",
              (unsigned)win_score);
-    snprintf(items[4], sizeof(items[4]), "5. Persist AI Stats  : < %s >",
+    snprintf(items[3], sizeof(items[3]), "4. Persist AI Stats  : < %s >",
              persist_ai ? "YES (saved to leaderboard)" : "NO (transient bots)");
-    snprintf(items[5], sizeof(items[5]), "[ LAUNCH TOURNAMENT ]");
-    snprintf(items[6], sizeof(items[6]), "[ Back to Main Menu ]");
+    snprintf(items[4], sizeof(items[4]), "[ LAUNCH TOURNAMENT ]");
+    snprintf(items[5], sizeof(items[5]), "[ Back to Main Menu ]");
 
     for (int i = 0; i < total_items; i++) {
-      int row_y = start_y + 3 + (i >= 5 ? i + 1 : i);
+      int row_y = start_y + 3 + (i >= 4 ? i + 1 : i);
       if (i == selected) {
         attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
         mvprintw(row_y, start_x + 3, " ->  %-62s ", items[i]);
@@ -1066,7 +1040,7 @@ static void tui_menu_tournament(void) {
 
     if (ko_invalid) {
       attron(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
-      mvprintw(start_y + 12, start_x + 3,
+      mvprintw(start_y + 11, start_x + 3,
                " (!) Knockout requires power-of-2 participants (2, 4, 8, 16)");
       attroff(COLOR_PAIR(PAIR_ALERT) | A_BOLD);
     }
@@ -1092,23 +1066,21 @@ static void tui_menu_tournament(void) {
       } else if (selected == 1) {
         tui_edit_participants(slots, &nb_slots);
       } else if (selected == 2) {
-        cheater_depth = (cheater_depth == 2) ? 4 : (cheater_depth == 4 ? 6 : 2);
-        for (uint8_t j = 0; j < nb_slots; j++) {
-          if (slots[j].ai_type == AI_TYPE_CHEATER) {
-            slots[j].cheater_depth = cheater_depth;
-          }
-        }
-      } else if (selected == 3) {
         win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
-      } else if (selected == 4) {
+      } else if (selected == 3) {
         persist_ai = !persist_ai;
       }
     } else if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-      if (selected == 1) {
+      if (selected == 0) {
+        type = (type == TOURNAMENT_ROUND_ROBIN) ? TOURNAMENT_KNOCKOUT
+                                                : TOURNAMENT_ROUND_ROBIN;
+      } else if (selected == 1) {
         tui_edit_participants(slots, &nb_slots);
-      } else if (selected == 4) {
+      } else if (selected == 2) {
+        win_score = (win_score == 25) ? 51 : (win_score == 51 ? 101 : 25);
+      } else if (selected == 3) {
         persist_ai = !persist_ai;
-      } else if (selected == 5) {
+      } else if (selected == 4) {
         if (type == TOURNAMENT_KNOCKOUT && (nb_slots & (nb_slots - 1)) != 0) {
           erase();
           mvprintw(3, 4, "Error: Knockout format requires power-of-2 participants (2, 4, 8, 16).");
