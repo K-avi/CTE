@@ -44,7 +44,7 @@ Steps & Roadmap :
         - [x] Lightweight register-only move ordering (heuristic move sort without heap alloc)
         - [ ] Selective endgame quiescence extension (d + 2..4 plies when hand <= 2)
         - [ ] Principal Variation (PV) caching & root turn reuse
-   [ ] Deep Omniscient Cheater & Multi-Deal Solver (Oracle Track):
+   [x] Deep Omniscient Cheater & Multi-Deal Solver (Oracle Track):
         - [x] Deck-aware state representation: track remaining shoe sequence from s_cte_game_state->deck
         - [x] Cross-deal lookahead (d = 14..18): anticipate opponent's upcoming cards across deal boundaries
         - [x] Deal 4 exact endgame resolution (last 12 cards, 0 in deck, 100% optimal minimax without heuristics)
@@ -85,6 +85,8 @@ Steps & Roadmap :
    [x] Tournament ELO tracking (symmetric deltas, standings with Elo Bef, Elo Aft, Delta, Win%).
    [x] Calibrated default AI Elo ratings (Dumb 0, Random 300, Greedy 1000, ISMCTS 1060, Cheater 1150, Fair 1266).
    [x] Fast/instant simulation for AI vs AI games in Quick Match.
+   [ ] 2v2 Team Tournament feature (4-player tables, team pairings, joint Elo tracking & bracket/round-robin support for v1.0).
+   [ ] 3p & 4p FFA Tournament mode (free-for-all tournaments, multi-seat Elo updates, deferred post-1.0).
    [ ] CTE Online (Peer-to-Peer / Client-Server over POSIX TCP & UNIX Sockets) :
         - Minimalist binary packet protocol (Handshake, Deal, Move request/broadcast, End of round)
         - Host mode (`cte --host [port]`) with non-blocking `poll(2)` event loop

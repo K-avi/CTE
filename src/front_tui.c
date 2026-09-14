@@ -159,64 +159,88 @@ static void render_tui_board(const s_cte_game_state *state,
     }
   }
 
-  // 4. Human Hand Box
+  // 4. Hand Box
   int hand_y = table_y + 3;
   const struct s_cte_player_data *cur_pl =
       &state->players->players[state->current_player_id];
+
+  // If active player is a bot, look for human player to display their hand
+  const struct s_cte_player_data *display_pl = cur_pl;
+  if (!cur_pl->is_human) {
+    for (uint8_t p = 0; p < state->players->size; p++) {
+      if (state->players->players[p].is_human) {
+        display_pl = &state->players->players[p];
+        break;
+      }
+    }
+  }
+
   attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
-  mvprintw(hand_y, 2, "=== %s'S HAND (%u cards) ===", cur_pl->player_name,
-           (unsigned)cur_pl->hand.size);
+  if (display_pl->is_human && !cur_pl->is_human) {
+    mvprintw(hand_y, 2, "=== YOUR HAND (%s, %u cards) ===",
+             display_pl->player_name, (unsigned)display_pl->hand.size);
+  } else {
+    mvprintw(hand_y, 2, "=== %s'S HAND (%u cards) ===",
+             display_pl->player_name, (unsigned)display_pl->hand.size);
+  }
   attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
 
   int hx = 4;
-  for (uint8_t i = 0; i < cur_pl->hand.size; i++) {
-    t_card c = cur_pl->hand.array[i];
-    bool is_played = (sel_move && sel_move->card_played == c);
+  for (uint8_t i = 0; i < display_pl->hand.size; i++) {
+    t_card c = display_pl->hand.array[i];
+    bool is_played = (cur_pl->is_human && sel_move && sel_move->card_played == c);
     print_colored_card(hand_y + 1, hx, c, style, is_played);
     hx += 8;
   }
 
-  // 5. Legal Moves Selector
+  // 5. Legal Moves Selector or Bot Turn Status
   int moves_y = hand_y + 3;
-  attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
-  mvprintw(moves_y, 2,
-           "=== AVAILABLE MOVES (Navigation: [UP/DOWN] - Play: [ENTER] - Quit: "
-           "[q]) ===");
-  attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
+  if (cur_pl->is_human) {
+    attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
+    mvprintw(moves_y, 2,
+             "=== AVAILABLE MOVES (Navigation: [UP/DOWN] - Play: [ENTER] - Quit: "
+             "[q]) ===");
+    attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
 
-  if (moves && moves->size > 0) {
-    int display_max = 8;
-    int start_idx = 0;
-    if (selected_move_idx >= (uint16_t)display_max) {
-      start_idx = selected_move_idx - display_max + 1;
-    }
-
-    for (int i = 0; i < display_max && (start_idx + i) < moves->size; i++) {
-      uint16_t idx = (uint16_t)(start_idx + i);
-      char move_str[128];
-      format_move(move_str, sizeof(move_str), &moves->moves[idx], style);
-
-      s_cte_move_score sc = score_move(&moves->moves[idx], state->table_bb);
-      char score_info[64] = "";
-      if (moves->moves[idx].cards_picked.size > 0) {
-        snprintf(score_info, sizeof(score_info), " -> +%u pt%s (%u cards)%s",
-                 (unsigned)sc.total_points, (sc.total_points > 1) ? "s" : "",
-                 (unsigned)sc.nb_cards, sc.is_tablic ? " [TABLIC!]" : "");
-      } else {
-        snprintf(score_info, sizeof(score_info), " -> Drop (0 pt)");
+    if (moves && moves->size > 0) {
+      int display_max = 8;
+      int start_idx = 0;
+      if (selected_move_idx >= (uint16_t)display_max) {
+        start_idx = selected_move_idx - display_max + 1;
       }
 
-      bool is_cur = (idx == selected_move_idx);
-      if (is_cur) {
-        attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-        mvprintw(moves_y + 1 + i, 4, " > [%u] %s%s ", (unsigned)idx, move_str,
-                 score_info);
-        attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-      } else {
-        mvprintw(moves_y + 1 + i, 4, "   [%u] %s%s", (unsigned)idx, move_str,
-                 score_info);
+      for (int i = 0; i < display_max && (start_idx + i) < moves->size; i++) {
+        uint16_t idx = (uint16_t)(start_idx + i);
+        char move_str[128];
+        format_move(move_str, sizeof(move_str), &moves->moves[idx], style);
+
+        s_cte_move_score sc = score_move(&moves->moves[idx], state->table_bb);
+        char score_info[64] = "";
+        if (moves->moves[idx].cards_picked.size > 0) {
+          snprintf(score_info, sizeof(score_info), " -> +%u pt%s (%u cards)%s",
+                   (unsigned)sc.total_points, (sc.total_points > 1) ? "s" : "",
+                   (unsigned)sc.nb_cards, sc.is_tablic ? " [TABLIC!]" : "");
+        } else {
+          snprintf(score_info, sizeof(score_info), " -> Drop (0 pt)");
+        }
+
+        bool is_cur = (idx == selected_move_idx);
+        if (is_cur) {
+          attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
+          mvprintw(moves_y + 1 + i, 4, " > [%u] %s%s ", (unsigned)idx, move_str,
+                   score_info);
+          attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
+        } else {
+          mvprintw(moves_y + 1 + i, 4, "   [%u] %s%s", (unsigned)idx, move_str,
+                   score_info);
+        }
       }
     }
+  } else {
+    attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
+    mvprintw(moves_y, 2, "=== %s'S TURN (Thinking...) ===", cur_pl->player_name);
+    attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
+    mvprintw(moves_y + 1, 4, "Waiting for %s to choose a move...", cur_pl->player_name);
   }
 
   // 6. Footer / Journal Bar
@@ -278,6 +302,31 @@ static void tui_on_round_start(uint8_t round_nb, void *ui_ctx) {
   }
 }
 
+static void tui_on_deal(const struct s_cte_players *players, void *ui_ctx) {
+  (void)players;
+  s_tui_ui_ctx *ctx = (s_tui_ui_ctx *)ui_ctx;
+  if (ctx && ctx->cur_round > 0 && ctx->last_log[0] != '\0' &&
+      strncmp(ctx->last_log, "Starting Round", 14) != 0) {
+    snprintf(ctx->last_log, sizeof(ctx->last_log), "New cards dealt to hands.");
+  }
+}
+
+static void tui_on_turn_start(const s_cte_game_state *state,
+                              const struct s_cte_move_list *moves,
+                              void *ui_ctx) {
+  (void)moves;
+  if (!state || !ui_ctx)
+    return;
+  s_tui_ui_ctx *ctx = (s_tui_ui_ctx *)ui_ctx;
+  const struct s_cte_player_data *cur_pl =
+      &state->players->players[state->current_player_id];
+
+  if (!cur_pl->is_human) {
+    render_tui_board(state, NULL, 0, ctx);
+    napms(400);
+  }
+}
+
 static void tui_on_move_played(const struct s_cte_player_data *player,
                                const struct s_cte_move *move, bool captured,
                                void *ui_ctx) {
@@ -293,7 +342,7 @@ static void tui_on_move_played(const struct s_cte_player_data *player,
 
   // If bot move, short pause to see bot play
   if (player && !player->is_human) {
-    napms(200);
+    napms(350);
   }
 }
 
@@ -395,8 +444,8 @@ static void tui_on_match_end(const struct s_cte_match *match, int8_t winner_id,
 
 static const s_cte_ui_callbacks g_tui_callbacks = {
     .on_round_start = tui_on_round_start,
-    .on_deal = NULL,
-    .on_turn_start = NULL,
+    .on_deal = tui_on_deal,
+    .on_turn_start = tui_on_turn_start,
     .on_move_played = tui_on_move_played,
     .on_round_end = tui_on_round_end,
     .on_match_end = tui_on_match_end,
