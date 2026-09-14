@@ -53,7 +53,7 @@ int main(){
     assert(be_bb != NULL);
 
     // -------------------------------------------------------------
-    // BT1: Prises Triples & As à double valeur (2 Backends)
+    // BT1: Triple Captures & Dual-Value Aces (2 Backends)
     // -------------------------------------------------------------
     printf("[BT1] Validating critical tactical scenarios across both backends...\n");
     uint64_t table_bb = (1ULL << 11) | (1ULL << 9) | (1ULL << 6) | (1ULL << 4) | (1ULL << 7) | (1ULL << 3);
@@ -72,7 +72,7 @@ int main(){
     printf("      -> PASS: Triple capture moves are 100%% identical across both engines.\n\n");
 
     // -------------------------------------------------------------
-    // BT2: Differential Fuzzing 2-Voies (10 000 positions)
+    // BT2: 2-Way Differential Fuzzing (10,000 positions)
     // -------------------------------------------------------------
     printf("[BT2] Running 2-Way Differential Fuzzing (10,000 positions)...\n");
     srand(mseed ^ 0x12345);
@@ -108,14 +108,14 @@ int main(){
         be_arr->gen_all_moves(&moves_arr, table_bb_rand, &rand_hand);
         be_bb->gen_all_moves(&moves_bb, table_bb_rand, &rand_hand);
 
-        // 1. Zéro faux positif
+        // 1. Zero false positives
         for(uint16_t m = 0; m < moves_bb.size; m++){
             bool is_leg = false;
             t_cteerr err_leg = is_legal(&is_leg, table_bb_rand, &moves_bb.moves[m]);
             assert(err_leg == e_ok && is_leg == true);
         }
 
-        // 2. Isomorphisme parfait
+        // 2. Perfect set isomorphism
         assert(moves_arr.size == moves_bb.size);
         assert(are_move_lists_identical(&moves_arr, &moves_bb));
 
@@ -132,7 +132,7 @@ int main(){
     printf("      -> PASS: 10,000 / 10,000 configurations 100%% identical (0 illegal, 0 missed).\n\n");
 
     // -------------------------------------------------------------
-    // BT3: Validation Différentielle du Générateur Motifs de Rangs SWAR (10 000 positions)
+    // BT3: Differential Validation of SWAR Rank Patterns Generator (10,000 positions)
     // -------------------------------------------------------------
     printf("[BT3] Validating 1-Pass SWAR Rank Patterns Compact Generator (7.1 KB) vs Array Oracle (10,000 positions)...\n");
     srand(mseed ^ 0x98765);
@@ -189,7 +189,7 @@ int main(){
     printf("      -> PASS: 10,000 / 10,000 configurations 100%% identical with 1-Pass SWAR Rank Patterns.\n\n");
 
     // -------------------------------------------------------------
-    // BT4: Simulation 500 Manches sous SWAR Rank Patterns Backend
+    // BT4: 500 Multi-Player Rounds Simulation via SWAR Rank Patterns Backend
     // -------------------------------------------------------------
     printf("[BT4] Running 500 complete multi-player rounds via SWAR Bitboard Backend...\n");
     s_cte_game game_bb;

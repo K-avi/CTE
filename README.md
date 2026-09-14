@@ -28,18 +28,24 @@ Tablić is a fishing card game popular in the Balkans, played with a standard 52
   - **3 Players** (4 deals of 4 cards).
   - **4 Players** (4 deals of 3 cards, individual or **2v2 Team Mode** with aggregated scores and team majority bonuses).
 
-- **AI Evaluators & Tree Search Engine :**
+- **AI Evaluators & Tree Search Engines :**
   - `random` : Uniform random legal move selector.
   - `dumb` : Passive drop evaluator.
   - `greedy` : Instant heuristic maximizer (card points + Tablić + captured card count).
-  - `cheater` : **Minimax search engine with Alpha-Beta pruning**. This engine cheats !! It reads the cards from your hand.
+  - `cheater` : **Minimax search engine with Alpha-Beta pruning**. Deep lookahead solver reading the cards from your hand and upcoming shoe sequence.
+  - `fair` : **Perfect Information Monte Carlo (PIMC)** search engine with rank-isomorphism deduplication and non-cheating opponent hand determinization.
+  - `ismcts` : **Information Set Monte Carlo Tree Search** with zero-allocation bitboard rollouts.
+- **Tournament Arena & Elo System :**
+  - **Round Robin & Knockout Cup** championships for 2 to 16 participants.
+  - **Individual & 2v2 Team Tournaments** with joint team standings, bracket progression, and Elo updates.
+  - **Persistent Profile DB** with calibrated default bot ratings (Dumb: 0, Random: 300, Greedy: 1000, ISMCTS: 1060, Cheater: 1150, Fair: 1266).
 - **Multi-Backend Architecture (SWAR bitboard & Array reference) :**
   - **SWAR Bitboard Engine (Default) :** 64-bit board representation using 4-bit SWAR rank pattern matching, 100% L1-resident ($7.1\text{ KB}$ LUT), zero dynamic heap allocations in the search hot path ($5.0\times$ speedup over the reference array implementation).
   - **Array Reference Oracle :** Combinatorial subset-sum partition backtracking used for continuous 2-way differential fuzzing.
   - See [`docs/backends.md`](docs/backends.md) for architectural details and benchmark methodology.
 - **Interfaces :**
   - **Interactive CLI** : Clean tabular dashboards with Unicode ($\spadesuit\heartsuit\diamondsuit\clubsuit$) and ASCII ($S/H/D/C$) rendering styles.
-  - **ncurses TUI** : Colorized suit pairs (red for $\heartsuit/\diamondsuit$, white/cyan for $\spadesuit/\clubsuit$), live capture preview on the table, and keyboard navigation.
+  - **ncurses TUI** : Colorized suit pairs (red for $\heartsuit/\diamondsuit$, white/cyan for $\spadesuit/\clubsuit$), interactive main menu, live capture preview, and keyboard navigation.
 
 ---
 
@@ -81,10 +87,10 @@ Tablić is a fishing card game popular in the Balkans, played with a standard 52
 # Build release binaries, test suites, and benchmarks:
 make all
 
-# Run complete functional test suite (T1–T34):
+# Run complete functional test suite (38 unit tests):
 make run-test
 
-# Run 2-way differential fuzzing suite (BT1–BT4):
+# Run 2-way differential fuzzing suite (BT1–BT4, 10,000 configurations):
 make run-test-bitboard
 
 # Run all test suites under AddressSanitizer/UBSan:
@@ -112,6 +118,10 @@ sudo make install
 # Simulate an 8-participant Round Robin tournament in CLI:
 ./build/cte -T round-robin -P Alice:human -P Bob:greedy -P Bot1:cheater -P Bot2:random
 
+# 2v2 Team Round Robin tournament (4 teams / 8 players):
+./build/cte -T round-robin -t -P A1:greedy -P A2:fair -P B1:cheater -P B2:ismcts \
+                               -P C1:greedy -P C2:random -P D1:fair -P D2:cheater
+
 # Knockout Cup single-elimination tournament to 51 points:
 ./build/cte -T cup -P Champion:greedy -P Challenger:cheater -w 51
 
@@ -123,9 +133,9 @@ sudo make install
 ```text
 Options:
   -n, --players <number>     Number of players: 2 (default), 3, or 4
-  -t, --team                 Enable 4-player 2v2 team mode (valid only with -n 4)
-  -a, --ai-type <list>       AI strategy or comma-separated list (e.g. greedy or greedy,cheater)
-                             Supported: random (default), dumb, greedy, cheater
+  -t, --team                 Enable 4-player 2v2 team mode (or team tournament)
+  -a, --ai-type <list>       AI strategy or comma-separated list (e.g. greedy,cheater)
+                             Supported: random (default), dumb, greedy, cheater, fair, ismcts
   -m, --mode <mode>          UI mode: cli (default), tui, gui
   -s, --style <style>        Card render style: unicode (default), ascii
   -g, --game <mode>          Game mode: h-vs-ai (default), h-vs-h, ai-vs-ai
@@ -133,7 +143,7 @@ Options:
   -c, --rounds <number>      Max number of rounds/deck cycles (default: 0 = unlimited)
   -r, --seed <number>        RNG seed (default: system time)
   -T, --tournament <type>    Run tournament directly: round-robin or cup
-  -P, --participant <spec>   Add participant: 'name:type' (human/random/dumb/greedy/cheater)
+  -P, --participant <spec>   Add participant: 'name:type' (human/random/dumb/greedy/cheater/fair/ismcts)
       --persist-ai           Persist AI bots in profile database (default: transient)
   -p, --profile <name>       Active player profile for tracking statistics and Elo
   -L, --leaderboard          Display player Elo leaderboard and exit
@@ -153,25 +163,28 @@ cte/
 │   ├── game.h                  # Game orchestration (init_game, run_round, pos_from_game, cte_set_backend)
 │   ├── eval.h                  # Evaluators, default Elo ratings & cte_get_evaluator
 │   ├── minmax.h                # Compact 60-byte L1 cache snapshot & Alpha-Beta search
+│   ├── card_tracker.h          # Hidden information card observer & sampling
+│   ├── pimc.h                  # Perfect Information Monte Carlo search
+│   ├── ismcts.h                # Information Set Monte Carlo Tree Search
 │   ├── engine.h                # Abstract s_cte_engine_backend interface & backend registry
 │   ├── backend_bitboard.h      # SWAR Rank Patterns bitboard move generator prototypes
 │   ├── bitboard_rank_tables.h  # Compact 7.1 KB rank LUT constants & types
-│   ├── tournament.h            # Round Robin & Knockout cup tournament engine
+│   ├── tournament.h            # Round Robin & Knockout cup tournament engine (1v1 and 2v2)
 │   ├── profile.h               # XDG atomic binary profile database & Elo rating math
 │   ├── front_cli.h             # Terminal CLI frontend & observer callbacks
 │   ├── front_tui.h             # ncurses interactive TUI frontend & menu system
 │   └── cte.h                   # Master umbrella header
 ├── src/                        # Implementation source modules
-├── test/                       # Functional (T1–T34) & differential bitboard (BT1–BT4) tests
+├── test/                       # Functional (38 unit tests) & differential bitboard (BT1–BT4) tests
 ├── tools/                      # Benchmarks & Python table generator
 ├── docs/                       # Architectural docs (backends.md) & Unix manpage (cte.1)
 └── main.c                      # CLI entry point & POSIX option parser
 ```
 
-### Upcoming Milestones
-- **SIMD Vectorization Backend :** Inter-game batch vectorization (GNU vector extensions then maybe MIPPv2 (>ᴗ•) ! ) for parallel rollouts.
-- **Fair Information-Set AI :** Perfect Information Monte Carlo (PIMC determinization) for non-cheating competitive play.
-- **Monte Carlo Tree Search (MCTS) :** Multi-threaded self-play search.
+### Upcoming Milestones (Post-1.0)
+- **SIMD Vectorization Backend :** Inter-game batch vectorization (GNU vector extensions) for parallel rollouts.
+- **CTE Online :** Client-Server / Peer-to-Peer network multiplayer over POSIX sockets.
+- **Interactive Web / GUI Analysis Board :** Real-time evaluation bar and tree explorer.
 
 ---
 

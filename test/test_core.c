@@ -37,7 +37,7 @@ int run_test_core(void) {
     assert(strcmp(players->players[0].player_name, "Alice") == 0);
     assert(strcmp(players->players[1].player_name, "Bob") == 0);
 
-    // ---- T7 : init_players — chemins d'erreur ----
+    // ---- T7: init_players error paths ----
     struct s_cte_players p_err;
     t_cteerr e7 = init_players(&p_err, 1, (char*[]){"Solo"});
     assert(e7 == e_inval_val);
@@ -57,7 +57,7 @@ int run_test_core(void) {
     assert(game.deck.cur_card == 16);
     assert(__builtin_popcountll(game.table_bb) == 4);
 
-    // ---- T8 : setup_round — contenu individuel de la table ----
+    // ---- T8: setup_round table content and state validation ----
     for(int i = 0; i < 4; i++){
         assert((game.table_bb & (1ULL << game.deck.cards[12 + i])) != 0);
     }
@@ -143,7 +143,7 @@ int run_test_core(void) {
     assert(match_is_over(&match));
     assert(match_winner(&match) >= 0);
 
-    // ---- T17 : Partie complète à 3 joueurs ----
+    // ---- T17: Complete 3-player match simulation ----
     s_cte_game game_3p;
     char *names_3p[3] = { "Alice", "Bob", "Charlie" };
     err = init_game(&game_3p, 3, names_3p, false);
@@ -167,7 +167,7 @@ int run_test_core(void) {
 
     free_game(&game_3p);
 
-    // ---- T18 : Partie complète à 4 joueurs (Individuel) ----
+    // ---- T18: Complete 4-player match simulation (Individual) ----
     s_cte_game game_4p;
     char *names_4p[4] = { "P1", "P2", "P3", "P4" };
     err = init_game(&game_4p, 4, names_4p, false);
@@ -190,7 +190,7 @@ int run_test_core(void) {
            game_4p.players.players[2].won_cards.size +
            game_4p.players.players[3].won_cards.size == 52);
 
-    // ---- T19 : Partie à 4 joueurs en Mode Équipe 2v2 ----
+    // ---- T19: 4-player 2v2 Team mode match simulation ----
     s_cte_round_config config_team = {
         .first_player  = 0,
         .is_team_mode  = true,
@@ -225,11 +225,11 @@ int run_test_core(void) {
     assert(game.table_bb == 0);
     assert(game.players.players[0].won_cards.size == 4);
 
-    game.last_captor_id = 99; // Invalide
+    game.last_captor_id = 99; // Invalid
     err = award_remaining_table_cards(&game);
     assert(err == e_inval_val);
 
-    // ---- T31 : Alternance du donneur / premier joueur entre les manches ----
+    // ---- T31: Dealer and first-player rotation between rounds ----
     {
         s_cte_game game_rot;
         char *rot_names[2] = { "Rot_P1", "Rot_P2" };

@@ -1587,11 +1587,11 @@ int run_tui_main_menu(void) {
   int selected = 0;
   const int total_items = 5;
   const char *menu_labels[5] = {
-      "1. Quick Match           (Partie Rapide)",
-      "2. Tournament Arena      (Championnats/Coupes)",
-      "3. Leaderboard & Profiles(Classements/Elo)",
-      "4. Rules & Instructions  (Règles du Tablić)",
-      "5. Quit CTE              (Quitter)"};
+      "1. Quick Match           (Single Game)",
+      "2. Tournament Arena      (Championships/Cups)",
+      "3. Leaderboard & Profiles(Standings/Elo)",
+      "4. Rules & Instructions  (Tablić Rules)",
+      "5. Quit CTE              (Exit)"};
 
   for (;;) {
     erase();

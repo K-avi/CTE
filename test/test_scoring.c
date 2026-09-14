@@ -45,7 +45,7 @@ int run_test_scoring(void) {
     assert(scores[1].majority_bonus == 0);
     assert(scores[1].tablic_points  == 0);
 
-    // ---- T21 : Conservation des 22 points sur 50 seeds ----
+    // ---- T21: Conservation of 22 trick points across 50 seeds ----
     s_cte_game game_ai;
     char *names_ai[2] = { "Greedy", "Cheater" };
     err = init_game(&game_ai, 2, names_ai, false);

@@ -4,7 +4,7 @@ int run_test_ai(void) {
     unsigned int mseed = test_get_seed();
     t_cteerr err;
 
-    // ---- T20 : Validation score_move & Évaluateurs IA ----
+    // ---- T20: score_move validation & AI evaluators ----
     s_cte_game game_ai;
     char *names_ai[2] = { "Greedy", "Dumb" };
     err = init_game(&game_ai, 2, names_ai, false);
@@ -42,7 +42,7 @@ int run_test_ai(void) {
         assert(game_ai.players.players[0].won_cards.size + game_ai.players.players[1].won_cards.size == 52);
     }
 
-    // ---- T24 : Minimax Tactical Resolution & Déterminisme ----
+    // ---- T24: Minimax Tactical Resolution & Determinism ----
     s_cte_pos tactical_pos;
     memset(&tactical_pos, 0, sizeof(tactical_pos));
     tactical_pos.nb_players = 2;
@@ -67,7 +67,7 @@ int run_test_ai(void) {
     assert(tact_moves.moves[best_tact1].cards_picked.size == 2);
     free_move_list(&tact_moves);
 
-    // ---- T25 : Fuzzing Multi-Joueurs (3p et 4p 2v2) croisé avec les 4 IA ----
+    // ---- T25: Multi-Player Fuzzing (3p and 4p 2v2) across 4 AI evaluators ----
     s_cte_game game_3p_fuzz;
     char *names_3p_fuzz[3] = { "Cheater", "Greedy", "Dumb" };
     err = init_game(&game_3p_fuzz, 3, names_3p_fuzz, false);
@@ -331,7 +331,7 @@ int run_test_ai(void) {
     assert(cfg_master.nodes_visited >= cfg_normal.nodes_visited);
     assert(cfg_master.depth_reached == 6);
 
-    // ---- T38 : Validation pos_evaluate_exact (Score terminal mathématique exact) ----
+    // ---- T38: pos_evaluate_exact validation (Exact terminal game-theoretic score) ----
     s_cte_pos exact_pos;
     memset(&exact_pos, 0, sizeof(exact_pos));
     exact_pos.nb_players = 2;
@@ -354,7 +354,7 @@ int run_test_ai(void) {
     exact_pos.won_card_counts[1] = 26;
     assert(pos_evaluate_exact(&exact_pos, 0) == 800);
 
-    // ---- T39 : Validation Solveur Donne 4 & Recherche Multi-Donnes ----
+    // ---- T39: Deal 4 Exact Solver & Multi-Deal Search validation ----
     s_cte_game game_deal4;
     char *d4_names[2] = { "P0", "P1" };
     err = init_game(&game_deal4, 2, d4_names, false);

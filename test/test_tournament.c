@@ -377,8 +377,7 @@ int run_test_tournament(void) {
     free_game(&game_tablic);
   }
 
-  // ---- T32 : Validation de l'unicite et non-vacuite des participants de
-  // tournoi ----
+  // ---- T32: Tournament participant uniqueness and non-emptiness validation ----
 
   {
     s_cte_tournament t_val;
@@ -409,8 +408,7 @@ int run_test_tournament(void) {
     free_tournament(&t_val);
   }
 
-  // ---- T33 : Cloisonnement strict de la persistance des IA (persist_ai ==
-  // false) ----
+  // ---- T33: Strict isolation of AI bot persistence (persist_ai == false) ----
   {
     const char *t33_db_path = "./t33_test_profiles.dat";
     unlink(t33_db_path);

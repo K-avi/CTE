@@ -114,8 +114,8 @@ Steps & Roadmap :
         - Keep 'cte' repository focused strictly on the core high-performance C engine, reference CLI, and TUI
 
 8. 1.0 Release Cleanup :
-   [ ] Full code audit (dead code removal, consistent naming, error handling review)
-   [ ] Remove all French comments and documentation — English only
-   [ ] Remove scratch files, notes.txt, perf.data*, bench.csv from tracked repo
-   [ ] README final pass (feature list, usage examples, screenshots)
+   [x] Full code audit (dead code removal, consistent naming, error handling review)
+   [x] Remove all French comments and documentation — English only
+   [x] Remove scratch files, notes.txt, perf.data*, bench.csv from tracked repo
+   [x] README final pass (feature list, usage examples, screenshots)
    [ ] Tag v1.0.0

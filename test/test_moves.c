@@ -201,7 +201,7 @@ int run_test_moves(void) {
     }
     free_move_list(&all_moves);
 
-    // T4: Table vide
+    // T4: Empty table
     table = 0;
     struct s_cte_move_list ml_empty;
     err = init_move_list(&ml_empty, 4);
@@ -213,7 +213,7 @@ int run_test_moves(void) {
     assert(ml_empty.moves[0].card_played == 8);
     free_move_list(&ml_empty);
 
-    // T5: Table vide, hand 1 carte
+    // T5: Empty table, hand has 1 card
     struct s_cte_hand hand_one;
     hand_one.size = 1;
     hand_one.array[0] = 5; // 7 clubs
@@ -283,7 +283,7 @@ int run_test_moves(void) {
     assert(test_player.won_cards.size == 0);
     assert(test_player.nb_tablic == 0);
 
-    // T2: play_move carte absente de la main
+    // T2: play_move: card absent from hand
     struct s_cte_move move_absent = { .card_played = 50, .cards_picked = { .size = 0, .array = {0} } };
     test_player.hand.size = 1;
     test_player.hand.array[0] = 8;
@@ -291,7 +291,7 @@ int run_test_moves(void) {
     assert(err == e_inval_val);
     assert(test_player.hand.size == 1);
 
-    // T3: play_move carte ciblée absente de la table
+    // T3: play_move: targeted card absent from table
     table = (1ULL << 21);
     test_player.hand.size = 1;
     test_player.hand.array[0] = 8;
@@ -310,11 +310,11 @@ int run_test_moves(void) {
     format_card(c_buf, sizeof(c_buf), 51, CTE_RENDER_UNICODE);
     assert(strcmp(c_buf, "K♠") == 0);
 
-    // ---- T22 : Prise triple & Rejet strict ----
+    // ---- T22: Triple capture & strict invalid move rejection ----
     table = (1ULL << 11) | (1ULL << 9) | (1ULL << 6) | (1ULL << 4) | (1ULL << 7) | (1ULL << 3);
 
     struct s_cte_move m_triple = {
-        .card_played = 12, // Roi (14)
+        .card_played = 12, // King (14)
         .cards_picked = { .size = 6, .array = { 11, 9, 6, 4, 7, 3 } }
     };
     bool is_leg = false;
