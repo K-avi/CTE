@@ -12,6 +12,13 @@ void pimc_config_init(s_cte_pimc_config *cfg, uint16_t num_worlds,
     cfg->ubp_model    = UBP_STRICT_ADMISSIBLE;
     cfg->rng_seed     = seed > 0 ? seed : 42;
     cfg->initialized  = false;
+    cfg->opt_flags    = PIMC_OPT_NONE;
+}
+
+void pimc_config_set_opts(s_cte_pimc_config *cfg, uint32_t flags)
+{
+    if(!cfg) return;
+    cfg->opt_flags = flags;
 }
 
 uint16_t pimc_search(const s_cte_game_state *state,
