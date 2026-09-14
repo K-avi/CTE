@@ -21,6 +21,9 @@ typedef enum {
     PIMC_OPT_ALL           = 0x3F
 } e_cte_pimc_opt_flags;
 
+// Default production optimization flags (4-ply lookahead + rank isomorphism deduplication)
+#define CTE_PIMC_DEFAULT_OPTS  (PIMC_OPT_DEPTH4 | PIMC_OPT_ISO_DEDUP)
+
 // PIMC configuration: passed as eval_context for eval_fair
 typedef struct {
     s_cte_card_tracker  tracker;       // Card tracker for the observer player

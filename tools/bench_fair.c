@@ -10,8 +10,8 @@
 #include <time.h>
 #include <math.h>
 
-static uint32_t parse_opt_flags(const char *token){
-    if(!token) return PIMC_OPT_ALL;
+static uint32_t parse_single_flag(const char *token){
+    if(!token) return 0;
     if(strcmp(token, "none") == 0 || strcmp(token, "base") == 0 || strcmp(token, "fair_v0") == 0){
         return PIMC_OPT_NONE;
     }
@@ -36,12 +36,30 @@ static uint32_t parse_opt_flags(const char *token){
     if(strcmp(token, "all") == 0){
         return PIMC_OPT_ALL;
     }
-    // Check if numeric bitmask
     char *endptr = NULL;
     unsigned long val = strtoul(token, &endptr, 0);
     if(endptr && *endptr == '\0') return (uint32_t)val;
-    return PIMC_OPT_ALL;
+    return 0;
 }
+
+static uint32_t parse_opt_flags(const char *token){
+    if(!token) return PIMC_OPT_ALL;
+    if(strchr(token, '+') || strchr(token, ',')){
+        char buf[256];
+        strncpy(buf, token, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        char *saveptr = NULL;
+        char *p = strtok_r(buf, "+,", &saveptr);
+        uint32_t flags = 0;
+        while(p){
+            flags |= parse_single_flag(p);
+            p = strtok_r(NULL, "+,", &saveptr);
+        }
+        return flags;
+    }
+    return parse_single_flag(token);
+}
+
 
 static const char *opt_flags_to_string(uint32_t flags, char *buf, size_t buf_sz){
     if(flags == PIMC_OPT_NONE){
@@ -79,8 +97,9 @@ static const char *opt_flags_to_string(uint32_t flags, char *buf, size_t buf_sz)
 int main(int argc, char **argv){
     uint32_t nb_rounds = 200;
     unsigned int seed = 42;
-    uint32_t cand_opts = PIMC_OPT_ALL;
+    uint32_t cand_opts = CTE_PIMC_DEFAULT_OPTS;
     uint32_t base_opts = PIMC_OPT_NONE;
+    bool base_is_greedy = false;
 
     if(argc >= 2){
         nb_rounds = (uint32_t)atoi(argv[1]);
@@ -95,27 +114,39 @@ int main(int argc, char **argv){
     }
 
     if(argc >= 4){
-        cand_opts = parse_opt_flags(argv[3]);
+        if(strcmp(argv[3], "default") == 0){
+            cand_opts = CTE_PIMC_DEFAULT_OPTS;
+        } else {
+            cand_opts = parse_opt_flags(argv[3]);
+        }
     }
 
     if(argc >= 5){
-        base_opts = parse_opt_flags(argv[4]);
+        if(strcmp(argv[4], "greedy") == 0){
+            base_is_greedy = true;
+        } else {
+            base_opts = parse_opt_flags(argv[4]);
+        }
     }
 
     srand(seed);
 
     char cand_desc[128], base_desc[128];
     opt_flags_to_string(cand_opts, cand_desc, sizeof(cand_desc));
-    opt_flags_to_string(base_opts, base_desc, sizeof(base_desc));
+    if(base_is_greedy){
+        snprintf(base_desc, sizeof(base_desc), "Greedy Heuristic AI (AI_TYPE_GREEDY)");
+    } else {
+        opt_flags_to_string(base_opts, base_desc, sizeof(base_desc));
+    }
 
     printf("====================================================================\n");
     printf("        CTE FAIR AI (PIMC) A/B BENCHMARK (HEAD-TO-HEAD)\n");
     printf("====================================================================\n");
     printf("[CONFIG] %u rounds, master seed %u\n", nb_rounds, seed);
     printf("  Candidate : %s (flags: 0x%02X)\n", cand_desc, cand_opts);
-    printf("  Baseline  : %s (flags: 0x%02X)\n", base_desc, base_opts);
-    printf("Reproduce: CTE_TEST_SEED=%u ./build/bench_fair %u %u 0x%02X 0x%02X\n\n",
-           seed, nb_rounds, seed, cand_opts, base_opts);
+    printf("  Baseline  : %s\n", base_desc);
+    printf("Reproduce: CTE_TEST_SEED=%u ./build/bench_fair %u %u 0x%02X %s\n\n",
+           seed, nb_rounds, seed, cand_opts, base_is_greedy ? "greedy" : "base");
 
     s_cte_pimc_config candidate_cfg;
     pimc_config_init(&candidate_cfg, CTE_PIMC_DEFAULT_WORLDS, CTE_PIMC_DEFAULT_DEPTH, seed + 1);
@@ -128,7 +159,8 @@ int main(int argc, char **argv){
     s_cte_bench_result res;
     t_cteerr err = cte_run_ai_benchmark(
         AI_TYPE_FAIR, &candidate_cfg,
-        AI_TYPE_FAIR, &baseline_cfg,
+        base_is_greedy ? AI_TYPE_GREEDY : AI_TYPE_FAIR,
+        base_is_greedy ? NULL : &baseline_cfg,
         nb_rounds, &res
     );
 

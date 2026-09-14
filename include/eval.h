@@ -98,7 +98,7 @@ static inline int16_t cte_default_ai_elo(e_cte_ai_type type){
         case AI_TYPE_GREEDY:      return 1000;
         case AI_TYPE_FAIR_GREEDY: return 1000;
         case AI_TYPE_ISMCTS:      return 1060;  // Empirical (+60 vs Greedy)
-        case AI_TYPE_FAIR:        return 1155;  // Empirical (+155 vs Greedy)
+        case AI_TYPE_FAIR:        return 1266;  // Empirical (+266 vs Greedy with Depth4 + IsoDedup)
         case AI_TYPE_CHEATER:     return 1150;
         case AI_TYPE_ORACLE:      return 1950;
         default:                  return 1000;
