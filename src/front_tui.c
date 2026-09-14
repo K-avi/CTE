@@ -911,6 +911,14 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         slots[cur].cheater_depth = 0;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Greedy_%u", (unsigned)(cur + 1));
       } else if (slots[cur].ai_type == AI_TYPE_GREEDY) {
+        slots[cur].ai_type = AI_TYPE_FAIR;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Fair_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_FAIR) {
+        slots[cur].ai_type = AI_TYPE_ISMCTS;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_ISMCTS_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_ISMCTS) {
         slots[cur].ai_type = AI_TYPE_CHEATER;
         slots[cur].cheater_depth = 2;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Cheater_Easy_%u", (unsigned)(cur + 1));
@@ -924,16 +932,8 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         slots[cur].ai_type = AI_TYPE_ORACLE;
         slots[cur].cheater_depth = 6;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Oracle_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_ORACLE) {
-        slots[cur].ai_type = AI_TYPE_FAIR;
-        slots[cur].cheater_depth = 0;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Fair_%u", (unsigned)(cur + 1));
-      } else if (slots[cur].ai_type == AI_TYPE_FAIR) {
-        slots[cur].ai_type = AI_TYPE_ISMCTS;
-        slots[cur].cheater_depth = 0;
-        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_ISMCTS_%u", (unsigned)(cur + 1));
       } else {
-        // From ISMCTS: check if another human already exists
+        // From Oracle: check if another human already exists
         bool already_has_human = false;
         for (uint8_t j = 0; j < *nb_slots; j++) {
           if (j != cur && slots[j].is_human) {
@@ -1004,10 +1004,10 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
 static void tui_menu_tournament(void) {
   e_cte_tournament_type type = TOURNAMENT_ROUND_ROBIN;
   s_tui_participant_slot slots[TUI_MAX_PARTICIPANTS] = {
+      { false, AI_TYPE_FAIR,    0, "Bot_Fair"    },
       { false, AI_TYPE_CHEATER, 4, "Bot_Cheater" },
       { false, AI_TYPE_GREEDY,  0, "Bot_Greedy"  },
       { false, AI_TYPE_RANDOM,  0, "Bot_Random"  },
-      { false, AI_TYPE_DUMB,    0, "Bot_Dumb"    },
   };
   uint8_t nb_slots = 4;
   uint8_t cheater_depth = 4;
@@ -1146,6 +1146,11 @@ static void tui_menu_tournament(void) {
           cheater_cfgs[i].ubp_model = UBP_NO_TABLIC;
         }
 
+        s_cte_pimc_config pimc_cfgs[TUI_MAX_PARTICIPANTS];
+        for (uint8_t i = 0; i < TUI_MAX_PARTICIPANTS; i++) {
+          pimc_config_init(&pimc_cfgs[i], CTE_PIMC_DEFAULT_WORLDS, CTE_PIMC_DEFAULT_DEPTH, 200 + i);
+        }
+
         for (uint8_t i = 0; i < nb_slots; i++) {
           snprintf(cfg.participants[i].name, sizeof(cfg.participants[i].name), "%.31s", slots[i].name);
           cfg.participants[i].is_human = slots[i].is_human;
@@ -1168,10 +1173,21 @@ static void tui_menu_tournament(void) {
             cheater_cfgs[i].ubp_model = UBP_NO_TABLIC;
             cfg.participants[i].eval_context = &cheater_cfgs[i];
             cfg.participants[i].elo_start = 1950;
+          } else if (slots[i].ai_type == AI_TYPE_FAIR) {
+            const char *dummy = NULL;
+            cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);
+            cfg.participants[i].eval_context = &pimc_cfgs[i];
+            cfg.participants[i].elo_start = cte_default_ai_elo(AI_TYPE_FAIR);
+          } else if (slots[i].ai_type == AI_TYPE_ISMCTS) {
+            const char *dummy = NULL;
+            cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);
+            cfg.participants[i].eval_context = NULL;
+            cfg.participants[i].elo_start = cte_default_ai_elo(AI_TYPE_ISMCTS);
           } else {
             const char *dummy = NULL;
             cfg.participants[i].evaluator = cte_get_evaluator(slots[i].ai_type, &dummy);
             cfg.participants[i].eval_context = NULL;
+            cfg.participants[i].elo_start = cte_default_ai_elo(slots[i].ai_type);
           }
         }
 
