@@ -1325,35 +1325,36 @@ static void tui_menu_tournament(void) {
           int res_h = 10 + res_count;
           if (res_h > max_avail_h) res_h = max_avail_h;
 
-          int res_w = (max_x >= 90) ? 86 : (max_x >= 84 ? 84 : (max_x > 4 ? max_x - 2 : 80));
+          int res_w = (max_x >= 88) ? 84 : ((max_x > 4) ? max_x - 2 : 80);
           int res_x = (max_x > res_w) ? (max_x - res_w) / 2 : 1;
-          int pad_x = (res_w >= 86) ? 4 : 2;
+          int res_y = (max_y > res_h) ? (max_y - res_h) / 2 : 1;
+          int pad_x = 2;
 
           char box_title[64];
           snprintf(box_title, sizeof(box_title), "%s%s RESULTS",
                    (type == TOURNAMENT_ROUND_ROBIN) ? "ROUND ROBIN " : "KNOCKOUT CUP ",
                    is_team_mode ? "2v2" : "");
-          tui_draw_box(1, res_x, res_h, res_w, box_title);
+          tui_draw_box(res_y, res_x, res_h, res_w, box_title);
 
           if (is_team_mode) {
             if (t.champion_team_idx >= 0 && t.champion_team_idx < t.nb_teams) {
               attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-              mvprintw(3, res_x + 4, " >>> 2v2 CHAMPIONS: %s <<< ",
+              mvprintw(res_y + 2, res_x + pad_x + 1, " >>> 2v2 CHAMPIONS: %s <<< ",
                        t.teams[t.champion_team_idx].name);
               attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
             }
 
             attron(A_BOLD);
-            mvprintw(5, res_x + pad_x,
-                     " Rank | Team (Members)        | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
+            mvprintw(res_y + 4, res_x + pad_x,
+                     " Rank | Team (Members)           | Bef  | Aft  |  +/- | Won | Lost | Pts | Win%%");
             attroff(A_BOLD);
             mvprintw(
-                6, res_x + pad_x,
-                "------|-----------------------|---------|---------|-------|-----|------|------|-----");
+                res_y + 5, res_x + pad_x,
+                "------|--------------------------|------|------|------|-----|------|-----|-----");
 
             for (uint8_t r = 0; r < t.nb_teams; r++) {
-              if (7 + r >= res_h - 1) {
-                mvprintw(7 + r, res_x + pad_x, "... (%u more teams omitted) ...",
+              if (res_y + 6 + r >= res_y + res_h - 2) {
+                mvprintw(res_y + 6 + r, res_x + pad_x, "... (%u more teams omitted) ...",
                          (unsigned)(t.nb_teams - r));
                 break;
               }
@@ -1363,8 +1364,8 @@ static void tui_menu_tournament(void) {
                               ? ((double)tm->matches_won / tm->matches_played) * 100.0
                               : 0.0;
               int16_t delta = tm->elo_current - tm->elo_start;
-              mvprintw(7 + r, res_x + pad_x,
-                       "  %2u  | %-21.21s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
+              mvprintw(res_y + 6 + r, res_x + pad_x,
+                       "  %2u  | %-24.24s | %4d | %4d | %+4d | %3u | %4u | %3u | %3.0f%%",
                        (unsigned)(r + 1), tm->name, (int)tm->elo_start,
                        (int)tm->elo_current, (int)delta, (unsigned)tm->matches_won,
                        (unsigned)tm->matches_lost, (unsigned)tm->total_points, wr);
@@ -1373,22 +1374,22 @@ static void tui_menu_tournament(void) {
             if (t.champion_idx >= 0 &&
                 t.champion_idx < t.config.nb_participants) {
               attron(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
-              mvprintw(3, res_x + 4, " >>> TOURNAMENT CHAMPION: %s <<< ",
+              mvprintw(res_y + 2, res_x + pad_x + 1, " >>> TOURNAMENT CHAMPION: %s <<< ",
                        t.config.participants[t.champion_idx].name);
               attroff(COLOR_PAIR(PAIR_SELECT) | A_BOLD);
             }
 
             attron(A_BOLD);
-            mvprintw(5, res_x + pad_x,
-                     " Rank | Participant      | Elo Bef | Elo Aft | Delta | Won | Lost | Pts  | Win%%");
+            mvprintw(res_y + 4, res_x + pad_x,
+                     " Rank | Participant              | Bef  | Aft  |  +/- | Won | Lost | Pts | Win%%");
             attroff(A_BOLD);
             mvprintw(
-                6, res_x + pad_x,
-                "------|------------------|---------|---------|-------|-----|------|------|-----");
+                res_y + 5, res_x + pad_x,
+                "------|--------------------------|------|------|------|-----|------|-----|-----");
 
             for (uint8_t r = 0; r < t.config.nb_participants; r++) {
-              if (7 + r >= res_h - 1) {
-                mvprintw(7 + r, res_x + pad_x, "... (%u more participants omitted) ...",
+              if (res_y + 6 + r >= res_y + res_h - 2) {
+                mvprintw(res_y + 6 + r, res_x + pad_x, "... (%u more participants omitted) ...",
                          (unsigned)(t.config.nb_participants - r));
                 break;
               }
@@ -1399,8 +1400,8 @@ static void tui_menu_tournament(void) {
                       ? ((double)p->matches_won / p->matches_played) * 100.0
                       : 0.0;
               int16_t delta = p->elo_current - p->elo_start;
-              mvprintw(7 + r, res_x + pad_x,
-                       "  %2u  | %-16.16s |  %5d  |  %5d  | %+5d | %3u | %4u | %4u | %3.0f%%",
+              mvprintw(res_y + 6 + r, res_x + pad_x,
+                       "  %2u  | %-24.24s | %4d | %4d | %+4d | %3u | %4u | %3u | %3.0f%%",
                        (unsigned)(r + 1), p->name, (int)p->elo_start,
                        (int)p->elo_current, (int)delta, (unsigned)p->matches_won,
                        (unsigned)p->matches_lost, (unsigned)p->total_points, wr);
@@ -1408,8 +1409,8 @@ static void tui_menu_tournament(void) {
           }
 
           attron(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
-          mvprintw(res_h, res_x + 4,
-                   " [Press any key to return to tournament menu...] ");
+          mvprintw(res_y + res_h - 2, res_x + pad_x + 1,
+                   "[Press any key to return to tournament menu...]");
           attroff(COLOR_PAIR(PAIR_ACCENT) | A_BOLD);
 
           refresh();
