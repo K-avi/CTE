@@ -1,5 +1,7 @@
 #include "eval.h"
 #include "minmax.h"
+#include "pimc.h"
+#include "ismcts.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -113,6 +115,57 @@ uint16_t eval_oracle(const s_cte_game_state *state,
     return eval_cheater(state, moves, &cfg);
 }
 
+// Fair greedy: same heuristic as eval_greedy but branded as a fair AI
+// (no opponent hand access; greedy never uses it anyway)
+uint16_t eval_fair_greedy(const s_cte_game_state *state,
+                          const struct s_cte_move_list *moves,
+                          void *ctx)
+{
+    return eval_greedy(state, moves, ctx);
+}
+
+// Fair AI: PIMC determinization + alpha-beta search
+uint16_t eval_fair(const s_cte_game_state *state,
+                   const struct s_cte_move_list *moves,
+                   void *ctx)
+{
+    if(!state || !moves || moves->size == 0) return 0;
+    if(moves->size == 1) return 0;
+
+    s_cte_pimc_config default_cfg;
+    if(!ctx){
+        pimc_config_init(&default_cfg, CTE_PIMC_DEFAULT_WORLDS,
+                         CTE_PIMC_DEFAULT_DEPTH, 42);
+        ctx = &default_cfg;
+    }
+
+    return pimc_search(state, moves, (s_cte_pimc_config *)ctx);
+}
+
+// ISMCTS AI: Single-Observer Information Set Monte Carlo Tree Search
+uint16_t eval_ismcts(const s_cte_game_state *state,
+                     const struct s_cte_move_list *moves,
+                     void *ctx)
+{
+    if(!state || !moves || moves->size == 0) return 0;
+    if(moves->size == 1) return 0;
+
+    s_cte_ismcts_config default_cfg;
+    bool free_needed = false;
+    if(!ctx){
+        ismcts_config_init(&default_cfg, CTE_ISMCTS_DEFAULT_ITERS,
+                           0, 42);
+        ctx = &default_cfg;
+        free_needed = true;
+    }
+
+    uint16_t choice = ismcts_search(state, moves, (s_cte_ismcts_config *)ctx);
+    if(free_needed){
+        ismcts_config_free(&default_cfg);
+    }
+    return choice;
+}
+
 t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){
     switch(type){
         case AI_TYPE_DUMB:
@@ -127,6 +180,15 @@ t_evaluator cte_get_evaluator(e_cte_ai_type type, const char **name_out){
         case AI_TYPE_ORACLE:
             if(name_out) *name_out = "Oracle";
             return eval_oracle;
+        case AI_TYPE_FAIR_GREEDY:
+            if(name_out) *name_out = "Fair-Greedy";
+            return eval_fair_greedy;
+        case AI_TYPE_FAIR:
+            if(name_out) *name_out = "Fair";
+            return eval_fair;
+        case AI_TYPE_ISMCTS:
+            if(name_out) *name_out = "ISMCTS";
+            return eval_ismcts;
         case AI_TYPE_RANDOM:
         default:
             if(name_out) *name_out = "Random";

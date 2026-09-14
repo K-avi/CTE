@@ -32,7 +32,7 @@ static void print_usage(const char *prog_name){
     printf("  -c, --rounds <number>      Max number of rounds/deck cycles (default: 0 = unlimited)\n");
     printf("  -r, --seed <number>        RNG seed (default: system time)\n");
     printf("  -T, --tournament <type>    Run tournament: round-robin or cup\n");
-    printf("  -P, --participant <spec>   Add tournament participant: 'name:type' (human/random/dumb/greedy/cheater/oracle)\n");
+    printf("  -P, --participant <spec>   Add tournament participant: 'name:type' (human/random/dumb/greedy/cheater/oracle/fair/ismcts)\n");
     printf("      --persist-ai           Persist AI bots in profile database\n");
     printf("      --bench-ai <spec>      Head-to-head AI benchmark 'bot1:bot2' (e.g. 'cheater:greedy', 'oracle:cheater')\n");
     printf("  -p, --profile <name>       Active player profile for tracking statistics and Elo\n");
@@ -51,6 +51,12 @@ static bool parse_ai_strategy(const char *token, e_cte_ai_type *type_out){
         *type_out = AI_TYPE_CHEATER; return true;
     } else if(strcmp(token, "oracle") == 0 || strcmp(token, "solver") == 0){
         *type_out = AI_TYPE_ORACLE; return true;
+    } else if(strcmp(token, "fair_greedy") == 0){
+        *type_out = AI_TYPE_FAIR_GREEDY; return true;
+    } else if(strcmp(token, "fair") == 0 || strcmp(token, "pimc") == 0){
+        *type_out = AI_TYPE_FAIR; return true;
+    } else if(strcmp(token, "ismcts") == 0 || strcmp(token, "mcts") == 0){
+        *type_out = AI_TYPE_ISMCTS; return true;
     }
     return false;
 }
@@ -204,7 +210,7 @@ int main(int argc, char **argv){
                 while(token && cli_config.nb_ai_types < 4){
                     e_cte_ai_type type;
                     if(!parse_ai_strategy(token, &type)){
-                        fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater, oracle\n", token);
+                        fprintf(stderr, "Error: Unknown AI strategy '%s'. Supported: random, dumb, greedy, cheater, oracle, fair_greedy, fair/pimc, ismcts/mcts\n", token);
                         free(arg_copy);
                         return 1;
                     }

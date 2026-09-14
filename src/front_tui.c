@@ -661,6 +661,8 @@ static void tui_menu_quick_match(void) {
     const char *ai_str = (ai_strat == AI_TYPE_GREEDY)    ? "Greedy"
                          : (ai_strat == AI_TYPE_CHEATER) ? "Cheater (Minimax)"
                          : (ai_strat == AI_TYPE_ORACLE)  ? "Oracle (Solver)"
+                         : (ai_strat == AI_TYPE_FAIR)    ? "Fair (PIMC)"
+                         : (ai_strat == AI_TYPE_ISMCTS)  ? "ISMCTS"
                          : (ai_strat == AI_TYPE_RANDOM)  ? "Random"
                                                          : "Dumb";
     const char *style_str = (style == CTE_RENDER_UNICODE) ? "Unicode" : "ASCII";
@@ -733,7 +735,9 @@ static void tui_menu_quick_match(void) {
       } else if (selected == 3) {
         ai_strat = (ai_strat == AI_TYPE_GREEDY)    ? AI_TYPE_CHEATER
                    : (ai_strat == AI_TYPE_CHEATER) ? AI_TYPE_ORACLE
-                   : (ai_strat == AI_TYPE_ORACLE)  ? AI_TYPE_RANDOM
+                   : (ai_strat == AI_TYPE_ORACLE)  ? AI_TYPE_FAIR
+                   : (ai_strat == AI_TYPE_FAIR)    ? AI_TYPE_ISMCTS
+                   : (ai_strat == AI_TYPE_ISMCTS)  ? AI_TYPE_RANDOM
                    : (ai_strat == AI_TYPE_RANDOM)  ? AI_TYPE_DUMB
                                                    : AI_TYPE_GREEDY;
       } else if (selected == 4) {
@@ -844,6 +848,14 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
       } else if (slots[i].ai_type == AI_TYPE_ORACLE) {
         snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
                  (unsigned)(i + 1), slots[i].name, "Oracle-Solver", 1950);
+      } else if (slots[i].ai_type == AI_TYPE_FAIR) {
+        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+                 (unsigned)(i + 1), slots[i].name, "Fair (PIMC)",
+                 (int)cte_default_ai_elo(AI_TYPE_FAIR));
+      } else if (slots[i].ai_type == AI_TYPE_ISMCTS) {
+        snprintf(line_buf, sizeof(line_buf), "#%u [AI]     : %-18.18s [%-14s] (Elo: %d)",
+                 (unsigned)(i + 1), slots[i].name, "ISMCTS",
+                 (int)cte_default_ai_elo(AI_TYPE_ISMCTS));
       } else {
         const char *strat = (slots[i].ai_type == AI_TYPE_GREEDY)  ? "Greedy"
                           : (slots[i].ai_type == AI_TYPE_RANDOM)  ? "Random"
@@ -912,8 +924,16 @@ static void tui_edit_participants(s_tui_participant_slot *slots, uint8_t *nb_slo
         slots[cur].ai_type = AI_TYPE_ORACLE;
         slots[cur].cheater_depth = 6;
         snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Oracle_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_ORACLE) {
+        slots[cur].ai_type = AI_TYPE_FAIR;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_Fair_%u", (unsigned)(cur + 1));
+      } else if (slots[cur].ai_type == AI_TYPE_FAIR) {
+        slots[cur].ai_type = AI_TYPE_ISMCTS;
+        slots[cur].cheater_depth = 0;
+        snprintf(slots[cur].name, sizeof(slots[cur].name), "Bot_ISMCTS_%u", (unsigned)(cur + 1));
       } else {
-        // From Oracle: check if another human already exists
+        // From ISMCTS: check if another human already exists
         bool already_has_human = false;
         for (uint8_t j = 0; j < *nb_slots; j++) {
           if (j != cur && slots[j].is_human) {

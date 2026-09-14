@@ -10,12 +10,12 @@ BINDIR ?= $(PREFIX)/bin
 MANDIR ?= $(PREFIX)/share/man/man1
 
 # Core engine sources (zero UI, zero ncurses)
-ENGINE_SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/minmax.c src/engine.c src/backend_bitboard.c src/bitboard_rank_tables.c
+ENGINE_SRCS = src/card.c src/player.c src/move.c src/game.c src/eval.c src/minmax.c src/engine.c src/backend_bitboard.c src/bitboard_rank_tables.c src/card_tracker.c src/pimc.c src/ismcts.c
 # Tournament & profile extension
 TOURN_SRCS  = $(ENGINE_SRCS) src/tournament.c src/profile.c
 # Full application sources
 SRCS        = $(TOURN_SRCS) src/front_cli.c src/front_tui.c
-HDRS        = include/card.h include/player.h include/move.h include/game.h include/eval.h include/minmax.h include/front_cli.h include/front_tui.h include/engine.h include/backend_bitboard.h include/bitboard_rank_tables.h include/tournament.h include/profile.h include/cte.h
+HDRS        = include/card.h include/player.h include/move.h include/game.h include/eval.h include/minmax.h include/front_cli.h include/front_tui.h include/engine.h include/backend_bitboard.h include/bitboard_rank_tables.h include/tournament.h include/profile.h include/cte.h include/card_tracker.h include/pimc.h include/ismcts.h
 
 # Object directories
 OBJDIR_REL = build/obj_rel

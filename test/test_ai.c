@@ -439,6 +439,85 @@ int run_test_ai(void) {
     free_move_list(&test_moves);
     free_game(&game_diff);
 
+    // ---- T28 : Fair AI Suite (Card Tracker, PIMC, ISMCTS, Fair-Greedy) ----
+    // 1. Card Tracker Unit Tests
+    s_cte_card_tracker tracker;
+    uint64_t own_hand = (1ULL << 0) | (1ULL << 1) | (1ULL << 2) | (1ULL << 3) | (1ULL << 4) | (1ULL << 5);
+    uint64_t table = (1ULL << 10) | (1ULL << 20) | (1ULL << 30) | (1ULL << 40);
+    tracker_init(&tracker, 0, own_hand, table);
+    assert(tracker.unseen_count == 52 - 6 - 4);
+    assert((tracker.unseen_bb & own_hand) == 0);
+    assert((tracker.unseen_bb & table) == 0);
+
+    // Test tracker_observe_play
+    tracker_observe_play(&tracker, 15);
+    assert((tracker.unseen_bb & (1ULL << 15)) == 0);
+    assert(tracker.unseen_count == 52 - 6 - 4 - 1);
+
+    // Test tracker_determinize
+    uint8_t h_sizes[2] = { 6, 6 };
+    uint64_t det_hands[2] = { 0 };
+    uint32_t det_seed = 12345;
+    tracker_determinize(&tracker, own_hand, h_sizes, 2, det_hands, &det_seed);
+    assert(det_hands[0] == own_hand);
+    assert(__builtin_popcountll(det_hands[1]) == 6);
+    assert((det_hands[0] & det_hands[1]) == 0); // No card collision
+    assert((det_hands[1] & table) == 0);         // Opponent doesn't hold table cards
+
+    // 2. Full Round with Fair-Greedy
+    s_cte_game game_fair_g;
+    char *names_fg[2] = { "FairGreedy", "Dumb" };
+    err = init_game(&game_fair_g, 2, names_fg, false);
+    assert(err == e_ok);
+    s_cte_round_config cfg_fg = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_fair_greedy, eval_dumb, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+    srand(mseed ^ 0x999);
+    err = run_round(&game_fair_g, &cfg_fg);
+    assert(err == e_ok);
+    assert(game_fair_g.deck.cur_card == 52);
+    assert(game_fair_g.table_bb == 0);
+    free_game(&game_fair_g);
+
+    // 3. Full Round with Fair AI (PIMC) vs Greedy
+    s_cte_game game_pimc;
+    char *names_pimc[2] = { "Fair_PIMC", "Greedy" };
+    err = init_game(&game_pimc, 2, names_pimc, false);
+    assert(err == e_ok);
+    s_cte_round_config cfg_pimc = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_fair, eval_greedy, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+    srand(mseed ^ 0xAAAA);
+    err = run_round(&game_pimc, &cfg_pimc);
+    assert(err == e_ok);
+    assert(game_pimc.deck.cur_card == 52);
+    assert(game_pimc.table_bb == 0);
+    free_game(&game_pimc);
+
+    // 4. Full Round with ISMCTS vs Dumb
+    s_cte_game game_ismcts;
+    char *names_ismcts[2] = { "ISMCTS", "Dumb" };
+    err = init_game(&game_ismcts, 2, names_ismcts, false);
+    assert(err == e_ok);
+    s_cte_round_config cfg_ismcts = {
+        .first_player  = 0,
+        .is_team_mode  = false,
+        .evaluators    = { eval_ismcts, eval_dumb, NULL, NULL },
+        .eval_contexts = { NULL, NULL, NULL, NULL },
+    };
+    srand(mseed ^ 0xBBBB);
+    err = run_round(&game_ismcts, &cfg_ismcts);
+    assert(err == e_ok);
+    assert(game_ismcts.deck.cur_card == 52);
+    assert(game_ismcts.table_bb == 0);
+    free_game(&game_ismcts);
+
     free_game(&game_ai);
     return 0;
 }

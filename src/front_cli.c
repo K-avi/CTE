@@ -1,4 +1,6 @@
 #include "front_cli.h"
+#include "pimc.h"
+#include "ismcts.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -257,10 +259,40 @@ int run_cli_frontend(const s_cte_cli_config *config){
         game.players.players[i].evaluator = slot_evaluators[i];
     }
 
+    // Allocate eval contexts for fair AI players
+    s_cte_pimc_config pimc_cfgs[4];
+    s_cte_ismcts_config ismcts_cfgs[4];
+    bool has_ismcts[4] = {false};
+
+    for(uint8_t i = 0; i < nb_p; i++){
+        if(slot_is_human[i]) continue;
+        uint8_t ai_idx = 0;
+        if(config->game_type == GAME_HUMAN_VS_AI){
+            ai_idx = (config->nb_ai_types > 1) ? (uint8_t)(i - 1) : 0;
+        } else {
+            ai_idx = (config->nb_ai_types > 1) ? i : 0;
+        }
+        e_cte_ai_type ai_t = config->ai_types[ai_idx % 4];
+
+        if(ai_t == AI_TYPE_FAIR){
+            pimc_config_init(&pimc_cfgs[i], CTE_PIMC_DEFAULT_WORLDS,
+                             CTE_PIMC_DEFAULT_DEPTH, (uint32_t)time(NULL) + i);
+            game.players.players[i].eval_context = &pimc_cfgs[i];
+        } else if(ai_t == AI_TYPE_ISMCTS){
+            ismcts_config_init(&ismcts_cfgs[i], CTE_ISMCTS_DEFAULT_ITERS,
+                               0, (uint32_t)time(NULL) + i);
+            game.players.players[i].eval_context = &ismcts_cfgs[i];
+            has_ismcts[i] = true;
+        }
+    }
+
     struct s_cte_match match;
     err = init_match(&match, &game, config->winning_score);
     if(err != e_ok){
         fprintf(stderr, "Error: Failed to initialize match (code: %u)\n", err);
+        for(uint8_t i = 0; i < nb_p; i++){
+            if(has_ismcts[i]) ismcts_config_free(&ismcts_cfgs[i]);
+        }
         free_game(&game);
         return 1;
     }
@@ -297,6 +329,9 @@ int run_cli_frontend(const s_cte_cli_config *config){
     err = run_match(&match, &round_config);
     if(err != e_ok){
         fprintf(stderr, "Error during match execution (code: %u)\n", err);
+        for(uint8_t i = 0; i < nb_p; i++){
+            if(has_ismcts[i]) ismcts_config_free(&ismcts_cfgs[i]);
+        }
         free_game(&game);
         return 1;
     }
@@ -314,6 +349,9 @@ int run_cli_frontend(const s_cte_cli_config *config){
         }
     }
 
+    for(uint8_t i = 0; i < nb_p; i++){
+        if(has_ismcts[i]) ismcts_config_free(&ismcts_cfgs[i]);
+    }
     free_game(&game);
     return 0;
 }
