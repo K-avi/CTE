@@ -69,9 +69,9 @@ uint16_t pimc_search(const s_cte_game_state *state,
             pos.hand_bb[p] = det_hands[p];
         }
 
-        // 3. Evaluate each root move via alpha-beta in this determinized world
+        uint8_t eff_depth = (cfg->opt_flags & PIMC_OPT_DEPTH4) ? 4 : cfg->search_depth;
         s_cte_search_config search_cfg = {
-            .max_depth      = cfg->search_depth,
+            .max_depth      = eff_depth,
             .timeout_ms     = 0,
             .ubp_model      = cfg->ubp_model,
             .multi_deal     = false,
