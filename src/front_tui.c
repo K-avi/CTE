@@ -24,7 +24,7 @@
 typedef struct {
   e_cte_render_style style;
   bool is_team_mode;
-  bool needs_opening_pause;
+  bool needs_deal_pause;
   char last_log[256];
   uint8_t cur_round;
   const struct s_cte_player_data *last_player;
@@ -298,7 +298,7 @@ static void tui_on_round_start(uint8_t round_nb, void *ui_ctx) {
   s_tui_ui_ctx *ctx = (s_tui_ui_ctx *)ui_ctx;
   if (ctx) {
     ctx->cur_round = round_nb;
-    ctx->needs_opening_pause = true;
+    ctx->needs_deal_pause = true;
     snprintf(ctx->last_log, sizeof(ctx->last_log), "Starting Round %u",
              (unsigned)round_nb);
   }
@@ -307,9 +307,12 @@ static void tui_on_round_start(uint8_t round_nb, void *ui_ctx) {
 static void tui_on_deal(const struct s_cte_players *players, void *ui_ctx) {
   (void)players;
   s_tui_ui_ctx *ctx = (s_tui_ui_ctx *)ui_ctx;
-  if (ctx && ctx->cur_round > 0 && ctx->last_log[0] != '\0' &&
-      strncmp(ctx->last_log, "Starting Round", 14) != 0) {
-    snprintf(ctx->last_log, sizeof(ctx->last_log), "New cards dealt to hands.");
+  if (ctx) {
+    ctx->needs_deal_pause = true;
+    if (ctx->cur_round > 0 && ctx->last_log[0] != '\0' &&
+        strncmp(ctx->last_log, "Starting Round", 14) != 0) {
+      snprintf(ctx->last_log, sizeof(ctx->last_log), "New cards dealt to hands.");
+    }
   }
 }
 
@@ -324,15 +327,15 @@ static void tui_on_turn_start(const s_cte_game_state *state,
       &state->players->players[state->current_player_id];
 
   if (!cur_pl->is_human) {
-    render_tui_board(state, NULL, 0, ctx);
-    // Only pause at the very opening of a round if bot plays first, so human observes table reset
-    if (ctx->needs_opening_pause) {
-      ctx->needs_opening_pause = false;
-      napms(350);
+    // Only render and pause immediately following a deal if bot plays first, so human observes dealt cards
+    if (ctx->needs_deal_pause) {
+      render_tui_board(state, NULL, 0, ctx);
+      ctx->needs_deal_pause = false;
+      napms(250);
     }
   } else {
-    // Human is taking a turn, so opening table is observed
-    ctx->needs_opening_pause = false;
+    // Human is taking a turn, so dealt cards are naturally observed
+    ctx->needs_deal_pause = false;
   }
 }
 
@@ -348,11 +351,6 @@ static void tui_on_move_played(const struct s_cte_player_data *player,
   format_move(move_str, sizeof(move_str), move, ctx->style);
   snprintf(ctx->last_log, sizeof(ctx->last_log), "[%s] played : %s",
            player ? player->player_name : "Player", move_str);
-
-  // If bot move, snappy pause so human perceives the move without sluggish waiting
-  if (player && !player->is_human) {
-    napms(120);
-  }
 }
 
 static void tui_on_round_end(const struct s_cte_players *players,
