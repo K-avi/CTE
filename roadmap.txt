@@ -51,9 +51,10 @@ Steps & Roadmap :
         - [ ] 24-ply deep minimax solver for Deals 3 + 4 with specialized Transposition Table
         - [ ] Full-round 48-ply resolution research (theoretical benchmark ceiling for perfect Tablić play)
    [x] Imperfect Information & Fair AI (Fair Track):
+        - [x] Automated A/B regression & Elo benchmark harness (tools/bench_fair.c, make bench-fair)
+        - [x] Perfect Information Monte Carlo (PIMC with 4-ply horizon & rank isomorphism dedup, +118 Elo, 0.65 ms/move)
+        - [x] Information Set Monte Carlo Tree Search (ISMCTS with zero-allocation bitboard rollouts)
         - [ ] Bayesian card tracking & opponent hand probability distribution (deferred post-1.0)
-        - [x] Perfect Information Monte Carlo (PIMC determinization across plausible hidden hands)
-        - [x] Information Set Monte Carlo Tree Search (ISMCTS)
    [ ] Pipedream :
         - [ ] CTE NN: Neural Network evaluation & policy/value network (AlphaZero-like Tablić agent)
 
@@ -82,7 +83,7 @@ Steps & Roadmap :
    [x] Saving player profile (name, elo & optionnaly loading it).
    [x] Participant customization (human/bot mix up to 16 participants in CLI and TUI).
    [x] Tournament ELO tracking (symmetric deltas, standings with Elo Bef, Elo Aft, Delta, Win%).
-   [x] Calibrated default AI Elo ratings (Dumb 0, Random 300, Greedy 1000, Cheater 1150).
+   [x] Calibrated default AI Elo ratings (Dumb 0, Random 300, Greedy 1000, ISMCTS 1060, Cheater 1150, Fair 1266).
    [x] Fast/instant simulation for AI vs AI games in Quick Match.
    [ ] CTE Online (Peer-to-Peer / Client-Server over POSIX TCP & UNIX Sockets) :
         - Minimalist binary packet protocol (Handshake, Deal, Move request/broadcast, End of round)
